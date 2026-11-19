@@ -15,6 +15,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.FileWriter;
 import java.io.FileReader;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 public class OneApiService extends Service {
     private static boolean running = false;
@@ -35,27 +37,38 @@ public class OneApiService extends Service {
         }
     }
 
-    public static String getLog() {
-        File logFile = new File("/data/data/com.example.oneapi/files/oneapi.log");
-        if (!logFile.exists()) return null;
+    private static final String DATA_DIR = "/data/data/com.example.oneapi/files";
+
+    private void diag(String msg) {
+        android.util.Log.i("OneApiService", msg);
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", "tail -200 " + logFile.getAbsolutePath()});
-            BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = r.readLine()) != null) {
-                sb.append(line).append("\n");
-            }
-            p.waitFor();
-            return sb.toString();
-        } catch (Exception e) {
-            return "Error reading log: " + e.getMessage();
+            File f = new File(DATA_DIR, "oneapi.log");
+            f.getParentFile().mkdirs();
+            try (FileWriter w = new FileWriter(f, true)) { w.write(msg + "\n"); }
+        } catch (Throwable ignored) {}
+    }
+
+    // 永远返回非空，保证 UI 轮询不中断
+    public static String getLog() {
+        StringBuilder sb = new StringBuilder();
+        File logFile = new File(DATA_DIR, "oneapi.log");
+        File pidFile = new File(DATA_DIR, "oneapi.pid");
+        sb.append(pidFile.exists() ? "[状态] 可能运行中" : "[状态] 未运行").append('\n');
+        if (logFile.exists()) {
+            try (BufferedReader r = new BufferedReader(new FileReader(logFile))) {
+                String line; int n = 0;
+                while ((line = r.readLine()) != null) { sb.append(line).append('\n'); if (++n > 400) break; }
+            } catch (Exception e) { sb.append("[读取失败] ").append(e).append('\n'); }
+        } else {
+            sb.append("[日志] 尚无日志文件。\n");
         }
+        return sb.toString();
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        diag("=== onCreate 进入 PID=" + android.os.Process.myPid() + " ===");
         // 前台服务是"尽力而为"：某些定制 ROM 即使声明了权限也可能拒绝。
         // 这里吞掉异常，保证 onStartCommand 仍能启动 Go 进程（大不了后台被系统回收）。
         try {
@@ -75,7 +88,7 @@ public class OneApiService extends Service {
                 startForeground(1, notification);
             }
         } catch (Throwable t) {
-            android.util.Log.e("OneApiService", "startForeground failed (continuing without foreground)", t);
+            diag("[警告] startForeground 失败: " + t);
         }
     }
 
@@ -92,8 +105,11 @@ public class OneApiService extends Service {
         new Thread(() -> {
             try {
                 startProcess(fPort, fDns);
-            } catch (Exception e) {
-                android.util.Log.e("OneApiService", "Error: " + e.getMessage(), e);
+            } catch (Throwable e) {
+                diag("[致命] startProcess 异常: " + e);
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                diag(sw.toString());
                 running = false;
                 stopSelf();
             }
@@ -102,7 +118,9 @@ public class OneApiService extends Service {
     }
 
     private void startProcess(String port, String dns) throws Exception {
+        diag("startProcess 开始 port=" + port + " dns=" + dns);
         File workDir = getFilesDir();
+        diag("二进制=" + new File(getApplicationInfo().nativeLibraryDir, "liboneapi.so").getAbsolutePath() + " exists=" + new File(getApplicationInfo().nativeLibraryDir, "liboneapi.so").exists());
         File pidFile = new File(workDir, "oneapi.pid");
         File logFile = new File(workDir, "oneapi.log");
         File bin = new File(getApplicationInfo().nativeLibraryDir, "liboneapi.so");
@@ -137,18 +155,22 @@ public class OneApiService extends Service {
                      "export CUSTOM_RESOLV_CONF=" + resolvFile.getAbsolutePath() + " && " +
                      "export LD_PRELOAD=" + hookLib.getAbsolutePath() + " && " +
                      "setsid " + bin.getAbsolutePath() + " --port " + port +
-                     " > " + logFile.getAbsolutePath() + " 2>&1 & echo $!";
+                     " >> " + logFile.getAbsolutePath() + " 2>&1 & echo $!";
 
+        diag("执行命令: " + cmd);
         Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
         String pid = new BufferedReader(new InputStreamReader(p.getInputStream())).readLine();
-        p.waitFor();
+        int ec = p.waitFor();
+        diag("命令退出码=" + ec + " pid=" + pid);
 
         if (pid != null && !pid.isEmpty()) {
             try (FileWriter w = new FileWriter(pidFile)) {
                 w.write(pid);
             }
             running = true;
-            android.util.Log.i("OneApiService", "Started with PID: " + pid);
+            diag("启动成功 PID=" + pid);
+        } else {
+            diag("[致命] 未取得 PID，启动失败");
         }
     }
 

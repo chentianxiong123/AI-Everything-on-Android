@@ -86,10 +86,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 String log = OneApiService.getLog();
-                if (log != null) {
-                    logText.setText(log);
-                    handler.postDelayed(this, 500);
-                }
+                logText.setText(log);
+                logText.scrollTo(0, 0);
+                handler.postDelayed(this, 500);  // 永远继续轮询，绝不因一次读失败而停止
             }
         };
         handler.postDelayed(logPoller, 500);
