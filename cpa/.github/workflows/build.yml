@@ -1,0 +1,20 @@
+name: CPA Termux Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['cpa/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Termux tarball
+        working-directory: cpa/termux
+        run: ./build-release.sh ../../dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CPA
+          path: dist/cpa-termux-arm64.tar.gz

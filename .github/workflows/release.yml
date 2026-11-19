@@ -1,0 +1,52 @@
+name: Aggregate Release (all artifacts)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag: { description: 'Release tag', required: true }
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: '17', distribution: temurin }
+      - uses: android-actions/setup-android@v3
+
+      - name: Build OneAPI artifacts
+        run: |
+          mkdir -p oneapi/apk/app/src/main/jniLibs/arm64-v8a
+          curl -fL --retry 3 -o oneapi/apk/app/src/main/jniLibs/arm64-v8a/liboneapi.so \
+            https://github.com/songquanpeng/one-api/releases/download/v0.6.10/one-api-arm64
+          (cd oneapi/apk && python3 align_fix.py app/src/main/jniLibs/arm64-v8a/liboneapi.so && gradle assembleDebug --no-daemon)
+          cp oneapi/apk/app/build/outputs/apk/debug/app-debug.apk OneAPI-v0.6.10.apk
+          (cd oneapi/termux && ./build-release.sh ../../dist)
+
+      - name: Build NewAPI artifacts
+        run: |
+          mkdir -p newapi/apk/app/src/main/jniLibs/arm64-v8a
+          curl -fL --retry 3 -o newapi/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so \
+            https://github.com/QuantumNous/new-api/releases/download/v1.0.0-rc.15/new-api-arm64-v1.0.0-rc.15
+          (cd newapi/apk && gradle assembleDebug --no-daemon)
+          cp newapi/apk/app/build/outputs/apk/debug/app-debug.apk NewAPI-v1.0.0-rc.15.apk
+          (cd newapi/termux && ./build-release.sh ../../dist)
+
+      - name: Build CPA artifact
+        run: (cd cpa/termux && ./build-release.sh ../../dist)
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            OneAPI-v0.6.10.apk
+            NewAPI-v1.0.0-rc.15.apk
+            dist/oneapi-termux-arm64.tar.gz
+            dist/newapi-termux-arm64.tar.gz
+            dist/cpa-termux-arm64.tar.gz

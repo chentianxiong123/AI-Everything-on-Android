@@ -1,21 +1,24 @@
-# Android APK 发行（One API / New API）
+# Android AI Gateway 聚合仓库
 
-本项目把 [One API](https://github.com/songquanpeng/one-api) 和 [New API](https://github.com/QuantumNous/new-api) 跑在 Android 上——**无需 Termux**。两套并行维护：
+在 Android 上运行 **One API / New API / CPA** 的发行仓库。顶层只做聚合，每个子目录是独立的一套：有自己的 README、构建脚本、CI workflow。
 
-| 目录 | 项目 | 上游关系 |
-|---|---|---|
-| [`oneapi/`](oneapi/) | One API v0.6.10 | 只下载官方 release 二进制（`download-binary.ps1`），不碰源码 |
-| [`newapi/`](newapi/) | New API（基线 commit `12fc0100`） | 官方 release 快速模式 + `patches/` 源码构建模式 |
+| 目录 | 项目 | 打法 | 包名 / 命令 |
+|---|---|---|---|
+| [`oneapi/`](oneapi/) | One API v0.6.10 | APK（DNS 劫持）+ Termux 裸二进制 | `com.example.oneapi` / `oneapi` |
+| [`newapi/`](newapi/) | New API v1.0.0-rc.15 | APK（DNS 劫持）+ Termux 裸二进制 | `com.example.newapi` / `newapi` |
+| [`cpa/`](cpa/) | CLIProxyAPI | Termux 裸二进制（官方静态包） | `cpa` |
 
-仓库内容 = 100% 本项目原创：Android 壳、DNS hook、构建脚本、patch、压测文档。**上游源码和编译产物均不入库**（二进制走 Git Release 分发）。
+## 两种打法的区别
 
-## 结构要点
-
-- 两套 Android 壳各自独立（Java 代码不同），共享同一套技术方案：`lib*.so` 改名复用 + `dns_hook.c`（LD_PRELOAD 重定向 `/etc/resolv.conf`）+ ProcessBuilder 拉起 Go 二进制；
-- `newapi/patches/` 记录了 5 处对上游的源码改动，`newapi/scripts/build-from-upstream.sh` 按固定 commit 拉上游→打 patch→编译→丢弃；
-- `newapi/mips/` 是全平台压测报告与交叉编译记录（8 台设备横评，含 M5 Note Flyme 7.0）；
-- 老设备兼容：`minSdk 16`、`align_fix.py`（ELF TLS 对齐）、Android 4.4 用 `GOOS=linux` 静态 ELF 绕过 bionic `sigfillset` 问题。
+- **APK**：Java 壳 + `libdns_hook.so` 用 LD_PRELOAD 劫持 `/etc/resolv.conf`，配合 `GODEBUG=netdns=go=1`。适合普通手机直接安装。
+- **Termux 裸二进制**：官方静态 arm64 二进制，不 patch（CPA 用 `no-plugin` 静态包），靠 Termux 的 `/etc/resolv.conf`。安装即 `curl ...install.sh | sh`。
 
 ## Release
 
-[Releases](https://github.com/chentianxiong123/oneapi-android-apk/releases) 提供 `OneAPI.apk` 和 `NewAPI.apk`，默认面板账号 `root` / `123456`。
+三个子目录的 CI（`.github/workflows/` 下各自独立）构建产物并上传 artifact。手动发版时把以下文件传到同一个 Release：
+
+- `OneAPI-v0.6.10.apk` / `oneapi-termux-arm64.tar.gz`
+- `NewAPI-v1.0.0-rc.15.apk` / `newapi-termux-arm64.tar.gz`
+- `cpa-termux-arm64.tar.gz`
+
+仓库不含任何上游源码和二进制（构建时下载官方 release），所有 patch/压测档案仅作历史参考。
