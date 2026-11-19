@@ -1,32 +1,35 @@
-name: Aggregate Release (all artifacts)
+name: Release (all 6 artifacts)
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      tag: { description: 'Release tag', required: true }
+      tag: { description: 'Release tag (e.g. v2.0.1)', required: true }
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { java-version: '17', distribution: temurin }
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship with Android SDK preinstalled (ANDROID_HOME).
+      # NOTE: android-actions/setup-android@v3 is broken on current runners
+      # (sdkmanager fails with "Failed to find package 'tools'"), so we rely on
+      # the preinstalled SDK instead.
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
+        with: { go-version: '1.26.x' }
       - uses: oven-sh/setup-bun@v2
       - name: Setup Android NDK
         id: ndk
         uses: nttld/setup-ndk@v1
         with: { ndk-version: r27c }
 
-      - name: Build OneAPI artifacts
+      - name: Build OneAPI (APK + Termux)
         run: |
           mkdir -p oneapi/apk/app/src/main/jniLibs/arm64-v8a
           curl -fL --retry 3 -o oneapi/apk/app/src/main/jniLibs/arm64-v8a/liboneapi.so \
@@ -35,16 +38,16 @@ jobs:
           cp oneapi/apk/app/build/outputs/apk/debug/app-debug.apk OneAPI-v0.6.10.apk
           (cd oneapi/termux && ./build-release.sh ../../dist)
 
-      - name: Build NewAPI artifacts
+      - name: Build NewAPI (APK + Termux, static upstream build)
         run: |
-          mkdir -p newapi/apk/app/src/main/jniLibs/arm64-v8a
-          curl -fL --retry 3 -o newapi/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so \
-            https://github.com/QuantumNous/new-api/releases/download/v1.0.0-rc.15/new-api-arm64-v1.0.0-rc.15
+          # Official release binary is dynamically linked against glibc -> cannot run on Android.
+          # Build a static arm64 binary from the clean upstream tag (same source, CGO_ENABLED=0).
+          (cd newapi && ./scripts/build-from-upstream.sh "$PWD/newapi/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so")
           (cd newapi/apk && gradle assembleDebug --no-daemon)
           cp newapi/apk/app/build/outputs/apk/debug/app-debug.apk NewAPI-v1.0.0-rc.15.apk
           (cd newapi/termux && ./build-release.sh ../../dist)
 
-      - name: Build CPA artifacts (APK + Termux)
+      - name: Build CPA (APK + Termux)
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           ANDROID_CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang

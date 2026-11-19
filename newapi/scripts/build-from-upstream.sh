@@ -17,11 +17,12 @@ echo "=== 2/4 Build both web frontends ==="
 (cd "$WORK/web/classic" && bun install --frozen-lockfile && bun run build)
 
 echo "=== 3/4 Cross-compile Go -> Android .so (real SQLite, CGO_ENABLED=0) ==="
-OUT="${1:-$HERE/app/src/main/jniLibs/arm64-v8a/liboneapi.so}"
+OUT="${1:-$HERE/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so}"
 mkdir -p "$(dirname "$OUT")"
 (cd "$WORK" && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
    go build -ldflags="-s -w" -o "$OUT" .)
 
 echo "=== 4/4 Done ==="
 ls -lh "$OUT"
-echo "Source kept at: $WORK (delete manually; no upstream source in this repo)"
+rm -rf "$WORK"
+echo "Source removed; no upstream source in this repo."
