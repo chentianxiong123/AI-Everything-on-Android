@@ -1,70 +1,60 @@
 # New API Android APK
 
-Run [New API](https://github.com/QuantumNous/new-api) v1.0.0-rc.15 on Android — no Termux needed.
+在 Android 上运行 [New API](https://github.com/QuantumNous/new-api)（Go 后端 + Web 管理面板）——**无需 Termux**。
 
-## Build
+本仓库只包含**本项目的原创内容**：Android 壳、DNS hook、构建脚本、patch、压测文档。**上游源码不入库**，构建时按固定 commit 拉取、打 patch、编译后丢弃。
+
+## 目录结构
+
+```
+newapi/
+├── app/                  Android 壳（Java Service + DNS hook + UI）
+├── patches/              对上游源码的全部改动（5 个 .patch + new-files/）
+├── scripts/
+│   ├── build-from-upstream.sh   ☆ 推荐：拉上游精确 commit → 打 patch → 编 .so
+│   └── ...                      其他辅助脚本
+├── align_fix.py          老设备 ELF PT_TLS 对齐修复
+├── build_from_source.ps1 旧版本地构建（依赖 vendored 源码，保留作参考）
+├── download-binary.ps1   下载官方 release 二进制（快速模式）
+├── mips/                 ★ 全平台压测报告与交叉编译记录（本项目最有价值的产出）
+├── .github/workflows/    CI：下载官方 release → 打 APK
+└── gradle*               标准 Gradle Android 工程
+```
+
+## 快速使用
+
+1. 安装 [Releases](https://github.com/chentianxiong123/oneapi-android-apk/releases) 里的 APK；
+2. 打开 **NewAPI Runner**，设置端口（默认 3000）和 DNS（默认 `8.8.8.8,8.8.4.4`）；
+3. 点 **启动**，再点 **管理后台** 打开 `http://127.0.0.1:3000`；默认账号 `root` / `123456`。
+
+## 从源码构建（推荐，上游不入库）
 
 ```bash
-# 1. Build Go .so (arm64 or armeabi-v7a)
 cd newapi
-pwsh build_from_source.ps1 -Tags no_web          # arm64 only
-pwsh build_from_source.ps1 -Tags no_web -GOARCH arm -OutDir armeabi-v7a   # 32-bit ARM
-# Or: place pre-built .so in app/src/main/jniLibs/{arm64-v8a,armeabi-v7a}/
-
-# 2. Build APK
-./gradlew assembleDebug
+NEWAPI_TAGS=no_web ./scripts/build-from-upstream.sh   # 生成 app/src/main/jniLibs/arm64-v8a/liboneapi.so
+./gradlew assembleDebug                                # 打 APK
 ```
 
-APK at `app/build/outputs/apk/debug/app-debug.apk`.
+脚本固定上游 commit `12fc0100`（见 `patches/UPSTREAM.md`）。升级上游：改 commit → 重跑 → 若 patch 冲突就手工调整 `patches/` → 提交。
 
-## Download
+快速模式（等不及编译）：`download-binary.ps1` 下载官方 arm64 release 二进制，或用 CI workflow 的 `workflow_dispatch`。
 
-Grab the latest APK from [Releases](https://github.com/chentianxiong123/oneapi-android-apk/releases).
+## 工作原理
 
-## Usage
+| 组件 | 作用 |
+|---|---|
+| `liboneapi.so` | New API Go 二进制（CGO_ENABLED=0，arm64 或 linux/arm 静态 ELF；借 Android so 加载机制当独立进程执行） |
+| `libdns_hook.so` | LD_PRELOAD 劫持 `/etc/resolv.conf`，重定向到 App 内自定义 DNS |
+| `OneApiService.java` | `:daemon` 独立进程里 ProcessBuilder 拉起二进制，注入 `GODEBUG=netdns=go=1` 等环境变量 |
+| `MainActivity.java` | 配置 UI（端口 / DNS / env.conf） |
+| `WebViewActivity.java` | 内置管理后台浏览器 |
 
-1. Install the APK
-2. Open **NewAPI Runner**
-3. Set port (default 3000) and DNS (default 8.8.8.8,8.8.4.4)
-4. Tap **启动**
-5. Tap **管理后台** to open the admin UI
+DNS 双保险：`LD_PRELOAD` 文件路径重定向 + `service/http_client.go` patch 里的自定义 dialer（直接用 UI 填的 DNS 服务器发 UDP 53 查询）。
 
-Default login: `root` / `123456`
+## Android 4.x 兼容
 
-## Android 4.x Support
+- `minSdk 16`；manifest 移除了 API 28+/33+ 权限；
+- Android 4.4 上 `GOOS=android` 二进制报 `cannot locate symbol "sigfillset"` → 用 `GOOS=linux GOARCH=arm` 静态编译绕过；
+- `align_fix.py` 修老 linker 的 ELF PT_TLS 64 字节对齐。
 
-The APK targets **minSdk 16** (Android 4.1 Jelly Bean). Changes made:
-
-| File | Change | Why |
-|------|--------|-----|
-| `app/build.gradle` | `minSdk 21` → `minSdk 16` | Allow install on Android 4.1+ |
-| `AndroidManifest.xml` | Removed `FOREGROUND_SERVICE` permission (API 28+) | Not available on older Android |
-| `AndroidManifest.xml` | Removed `POST_NOTIFICATIONS` permission (API 33+) | Not available on older Android |
-| `AndroidManifest.xml` | Removed `foregroundServiceType="dataSync"` (API 29+) | Not available on older Android |
-| `gradle.properties` | Added `suppressMinSdkVersionError` | NDK C++ requires API 21, but the hook lib is optional |
-
-Go's `android/arm` target requires minimum **API 16**; pure Go 4.0 (API 14) is not supported.
-
-### Android 4.4 (API 19) Known Issue
-
-`GOOS=android` compiled binaries fail on Android 4.4.2 with `cannot locate symbol "sigfillset"` — the old bionic libc doesn't export this symbol.
-
-**Workaround:** Build with `GOOS=linux GOARCH=arm` instead of `GOOS=android`. The resulting static ELF binary (CGO_ENABLED=0) runs correctly on Android 4.x through ProcessBuilder:
-
-```sh
-GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
-  go build -tags no_web -ldflags="-s -w" \
-  -o app/src/main/jniLibs/armeabi-v7a/liboneapi.so .
-```
-
-## How It Works
-
-| Component | Role |
-|-----------|------|
-| `liboneapi.so` | New API Go binary (CGO_ENABLED=0, android/arm64 or android/arm) |
-| `libdns_hook.so` | LD_PRELOAD hook — redirects `/etc/resolv.conf` |
-| `OneApiService.java` | Process lifecycle + env vars |
-| `MainActivity.java` | Config UI (port, DNS) |
-| `WebViewActivity.java` | Admin SPA viewer |
-
-DNS: `LD_PRELOAD=libdns_hook.so` + `GODEBUG=netdns=go=1`
+详见 `mips/BUILD_MIPS.md` 和 `mips/NEWAPI_ALL_BENCHMARK.md`（8 台设备横评）。

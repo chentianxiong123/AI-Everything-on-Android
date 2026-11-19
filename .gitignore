@@ -2,30 +2,22 @@
 build/
 *.apk
 *.aab
+*.so
+*.o
 
-# IDE
+# IDE / Gradle
 .idea/
 *.iml
 .gradle/
 local.properties
-
-# NDK
 .cxx/
 
-# Downloaded binary
-app/src/main/jniLibs/arm64-v8a/liboneapi.so
-newapi/mips/
-newapi/app/.cxx/
-newapi/app/build/
-newapi/go-source/newapi_android_arm64
-newapi/go-source/newapi_arm_noweb
-newapi/go-source/newapi_linux_arm64_noweb
-newapi/go-source/newapi_linux_arm7
+# Upstream build scratch (build-from-upstream.sh uses /tmp by default)
+newapi/go-source/
+newapi/.upstream-work/
 
-# Tokenizer cache
-app/src/main/assets/cl100k_base.tiktoken
-newapi/go-source/web/**/dist/
-newapi/go-source/web/**/node_modules/
+# Tokenizer cache (downloaded at runtime)
+*.tiktoken
 
 # OS
 .DS_Store

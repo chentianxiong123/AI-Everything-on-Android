@@ -1,0 +1,29 @@
+--- a/service/http_client.go
++++ b/service/http_client.go
+@@ -34,12 +34,26 @@
+ }
+ 
+ func InitHttpClient() {
++	dialer := &net.Dialer{
++		Timeout:   30 * time.Second,
++		KeepAlive: 30 * time.Second,
++	}
++	if common.DnsServer != "" {
++		dialer.Resolver = &net.Resolver{
++			PreferGo: true,
++			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
++				d := net.Dialer{}
++				return d.DialContext(ctx, "udp", net.JoinHostPort(common.DnsServer, "53"))
++			},
++		}
++	}
+ 	transport := &http.Transport{
+ 		MaxIdleConns:        common.RelayMaxIdleConns,
+ 		MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
+ 		IdleConnTimeout:     time.Duration(common.RelayIdleConnTimeout) * time.Second,
+ 		ForceAttemptHTTP2:   true,
+ 		Proxy:               http.ProxyFromEnvironment, // Support HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
++		DialContext:         dialer.DialContext,
+ 	}
+ 	if common.TLSInsecureSkipVerify {
+ 		transport.TLSClientConfig = common.InsecureTLSConfig

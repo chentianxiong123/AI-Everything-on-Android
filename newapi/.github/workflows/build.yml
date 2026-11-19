@@ -3,7 +3,7 @@ name: Build New API APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'newapi/**'
 
