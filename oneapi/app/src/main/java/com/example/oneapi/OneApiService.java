@@ -129,11 +129,15 @@ public class OneApiService extends Service {
         tokenDir.mkdirs();
         File tokenFile = new File(tokenDir, "cl100k_base.tiktoken");
         if (!tokenFile.exists()) {
+            // tokenizer 非核心功能，APK 未内置时跳过，绝不阻断启动
             try (InputStream in = getAssets().open("cl100k_base.tiktoken");
                  FileOutputStream out = new FileOutputStream(tokenFile)) {
                 byte[] buf = new byte[65536];
                 int n;
                 while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                diag("tiktoken 已复制");
+            } catch (Exception e) {
+                diag("[提示] APK 未内置 tiktoken，跳过（不影响核心功能）: " + e);
             }
         }
 

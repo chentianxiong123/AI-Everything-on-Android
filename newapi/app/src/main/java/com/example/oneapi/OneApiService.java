@@ -173,11 +173,16 @@ public class OneApiService extends Service {
         tokenDir.mkdirs();
         File tokenFile = new File(tokenDir, "cl100k_base.tiktoken");
         if (!tokenFile.exists()) {
+            // tokenizer 只用于部分模型的 token 估算，非核心功能。
+            // APK 未内置该文件时跳过即可，绝不能让它阻断启动。
             try (InputStream in = getAssets().open("cl100k_base.tiktoken");
                  FileOutputStream out = new FileOutputStream(tokenFile)) {
                 byte[] buf = new byte[65536];
                 int n;
                 while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                diag("tiktoken 已复制到 " + tokenFile.getAbsolutePath());
+            } catch (Exception e) {
+                diag("[提示] APK 未内置 tiktoken，跳过（不影响核心功能）: " + e);
             }
         }
 
