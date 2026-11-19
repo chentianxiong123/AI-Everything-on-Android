@@ -24,6 +24,6 @@ public class WebViewActivity extends AppCompatActivity {
         s.setUseWideViewPort(true);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         wv.setWebViewClient(new WebViewClient());
-        wv.loadUrl("http://127.0.0.1:" + port);
+        wv.loadUrl("http://127.0.0.1:" + port + "/management.html");
     }
 }

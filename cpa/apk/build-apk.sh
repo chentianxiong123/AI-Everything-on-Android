@@ -9,6 +9,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"          # cpa/apk
 UPSTREAM_REPO="https://github.com/router-for-me/CLIProxyAPI.git"
 UPSTREAM_TAG="${CPA_TAG:-v8.0.79}"
+PANEL_URL="${CPA_PANEL_URL:-https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases/latest/download/management.html}"
 WORK="${CPA_WORKDIR:-/tmp/cpa-upstream-$$}"
 # NDK clang (API 24) -- override via ANDROID_NDK_HOME / ANDROID_CC
 NDK_HOME="${ANDROID_NDK_HOME:-/usr/local/android-sdk/ndk/28.2.13676358}"
@@ -18,6 +19,12 @@ GOTMP="${GOTMPDIR:-/tmp}"
 echo "=== 1/4 Fetch upstream $UPSTREAM_TAG ==="
 rm -rf "$WORK"
 git clone --quiet --depth 1 --branch "$UPSTREAM_TAG" "$UPSTREAM_REPO" "$WORK"
+
+echo "=== 1.5/4 Fetch management frontend (single-file HTML) ==="
+mkdir -p "$HERE/app/src/main/assets"
+curl -fL --retry 3 -o "$HERE/app/src/main/assets/management.html" "$PANEL_URL" \
+  || { echo "WARN: panel download failed; keeping existing asset if any" >&2; }
+ls -lh "$HERE/app/src/main/assets/management.html"
 
 echo "=== 2/4 NDK cross-compile (CGO_ENABLED=1, GOOS=android, Bionic) ==="
 mkdir -p "$HERE/app/src/main/jniLibs/arm64-v8a"

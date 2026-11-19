@@ -184,6 +184,21 @@ public class CpaService extends Service {
         }
         diag("配置已写入 " + configFile.getAbsolutePath() + " (" + cfg.length() + " 字节)");
 
+        // 内置管理前端：把 APK assets 里的 management.html 复制到 static/，
+        // 通过 MANAGEMENT_STATIC_PATH 让 CPA 离线也能提供完整 Web 面板（不依赖联网下载）。
+        File staticDir = new File(workDir, "static");
+        staticDir.mkdirs();
+        File panelFile = new File(staticDir, "management.html");
+        try (InputStream pin = getAssets().open("management.html");
+             FileOutputStream pout = new FileOutputStream(panelFile)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = pin.read(buf)) != -1) pout.write(buf, 0, n);
+            diag("管理面板已释放到 " + panelFile.getAbsolutePath() + " (" + panelFile.length() + " 字节)");
+        } catch (Exception e) {
+            diag("[警告] 释放内置管理面板失败: " + e);
+        }
+
         // NDK/Bionic 编译版：系统 DNS 由 Android netd 处理，无需 LD_PRELOAD hook
         ProcessBuilder pb = new ProcessBuilder(
             bin.getAbsolutePath(), "-config", configFile.getAbsolutePath()
@@ -191,6 +206,7 @@ public class CpaService extends Service {
         pb.directory(workDir);
         pb.redirectErrorStream(true);
         pb.environment().put("HOME", workDir.getAbsolutePath());
+        pb.environment().put("MANAGEMENT_STATIC_PATH", staticDir.getAbsolutePath());
         loadEnvConfig(pb, workDir);
 
         diag("准备 pb.start(): " + bin.getAbsolutePath() + " -config " + configFile.getAbsolutePath());
