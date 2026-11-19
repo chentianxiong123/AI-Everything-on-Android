@@ -32,10 +32,19 @@ cp "$HERE"/patches/new-files/main_noembed.go      "$WORK/main_noembed.go"
 cp "$HERE"/patches/new-files/sqlite-stub_sqlite.go "$WORK/sqlite-stub/sqlite.go"
 cp "$HERE"/patches/new-files/sqlite-stub_go.mod    "$WORK/sqlite-stub/go.mod"
 
+TAGS="${NEWAPI_TAGS:-}"                # 默认有网页（嵌入完整前端）；no_web = 无头压测版
+
+echo "=== 3.5/4 Build embedded frontend (headed mode) ==="
+if [ -z "$TAGS" ] || ! echo "$TAGS" | grep -q no_web; then
+  if [ ! -f "$WORK/web/default/dist/index.html" ]; then
+    echo "  building default theme with bun..."
+    (cd "$WORK/web/default" && bun install --frozen-lockfile && bun run build)
+  fi
+fi
+
 echo "=== 4/4 Cross-compile Go -> Android .so ==="
 OUT="${1:-$HERE/app/src/main/jniLibs/arm64-v8a/liboneapi.so}"
 mkdir -p "$(dirname "$OUT")"
-TAGS="${NEWAPI_TAGS:-no_web}"          # no_web = headless; empty = full admin UI embedded
 GOARCH="${NEWAPI_GOARCH:-arm64}"
 case "$GOARCH" in
   arm64) GOOS_TARGET=android; CLANG="" ;;

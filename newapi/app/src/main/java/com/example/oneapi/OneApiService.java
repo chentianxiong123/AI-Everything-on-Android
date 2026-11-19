@@ -59,18 +59,28 @@ public class OneApiService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        String channelId = "oneapi_channel";
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(channelId, "OneAPI", NotificationManager.IMPORTANCE_LOW);
-            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) nm.createNotificationChannel(ch);
+        // 前台服务是"尽力而为"：某些定制 ROM 即使声明了权限也可能拒绝。
+        // 这里吞掉异常，保证 onStartCommand 仍能启动 Go 进程（大不了后台被系统回收）。
+        try {
+            String channelId = "oneapi_channel";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel(channelId, "OneAPI", NotificationManager.IMPORTANCE_LOW);
+                NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                if (nm != null) nm.createNotificationChannel(ch);
+            }
+            Notification notification = new NotificationCompat.Builder(this, channelId)
+                    .setContentTitle("OneAPI")
+                    .setContentText("运行中")
+                    .setSmallIcon(android.R.drawable.ic_menu_manage)
+                    .build();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            } else {
+                startForeground(1, notification);
+            }
+        } catch (Throwable t) {
+            android.util.Log.e("OneApiService", "startForeground failed (continuing without foreground)", t);
         }
-        Notification notification = new NotificationCompat.Builder(this, channelId)
-                .setContentTitle("OneAPI")
-                .setContentText("运行中")
-                .setSmallIcon(android.R.drawable.ic_menu_manage)
-                .build();
-        startForeground(1, notification);
     }
 
     @Override

@@ -10,8 +10,6 @@ var buildFS embed.FS
 //go:embed web/default/dist/index.html
 var indexPage []byte
 
-//go:embed web/classic/dist
+// classic 主题在本构建中未嵌入（上游 classic 前端依赖冲突，default 主题已完整可用）
 var classicBuildFS embed.FS
-
-//go:embed web/classic/dist/index.html
 var classicIndexPage []byte
