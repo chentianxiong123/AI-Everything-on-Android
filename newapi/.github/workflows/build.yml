@@ -14,6 +14,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { java-version: '17', distribution: temurin }
       - uses: android-actions/setup-android@v3
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24' }
+      - uses: oven-sh/setup-bun@v2
 
       - name: Fetch official binary -> APK payload (new package name)
         working-directory: newapi/apk

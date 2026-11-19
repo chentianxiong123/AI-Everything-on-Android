@@ -16,6 +16,6 @@ BIN=$(find "$TMP" -maxdepth 2 -type f -name 'cli-proxy-api' | head -1)
 cp "$BIN" "$STAGE/cli-proxy-api"; chmod 755 "$STAGE/cli-proxy-api"
 echo "Downloading management panel..."
 curl -fsSL "$PANEL_URL" -o "$STAGE/management.html" || echo "<html><body>CPA Panel</body></html>" > "$STAGE/management.html"
-cp "$HERE/README.md" "$STAGE/" 2>/dev/null || true
+cp "$HERE/../README.md" "$STAGE/" 2>/dev/null || true
 tar -C "$STAGE" -czf "$DIST/cpa-termux-arm64.tar.gz" cli-proxy-api management.html README.md
 echo "Built: $DIST/cpa-termux-arm64.tar.gz"

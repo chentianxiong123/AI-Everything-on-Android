@@ -8,6 +8,6 @@ STAGE="$DIST/stage"; mkdir -p "$STAGE"
 echo "Downloading official One API arm64 binary..."
 curl -fL --retry 3 -o "$STAGE/one-api" "$BIN_URL"
 chmod 755 "$STAGE/one-api"
-cp "$HERE/README.md" "$STAGE/" 2>/dev/null || true
+cp "$HERE/../README.md" "$STAGE/" 2>/dev/null || true
 tar -C "$STAGE" -czf "$DIST/oneapi-termux-arm64.tar.gz" one-api README.md
 echo "Built: $DIST/oneapi-termux-arm64.tar.gz"
