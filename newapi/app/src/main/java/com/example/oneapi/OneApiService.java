@@ -111,12 +111,12 @@ public class OneApiService extends Service {
         try {
             String channelId = "oneapi_channel";
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel ch = new NotificationChannel(channelId, "OneAPI", NotificationManager.IMPORTANCE_LOW);
+                NotificationChannel ch = new NotificationChannel(channelId, "NewAPI", NotificationManager.IMPORTANCE_LOW);
                 NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                 if (nm != null) nm.createNotificationChannel(ch);
             }
             Notification notification = new NotificationCompat.Builder(this, channelId)
-                    .setContentTitle("OneAPI")
+                    .setContentTitle("NewAPI")
                     .setContentText("运行中")
                     .setSmallIcon(android.R.drawable.ic_menu_manage)
                     .build();
