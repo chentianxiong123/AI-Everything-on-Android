@@ -1,0 +1,26 @@
+# Build outputs
+build/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.gradle/
+local.properties
+
+# NDK
+.cxx/
+
+# Compiled Go binary (build from source generates this)
+app/src/main/jniLibs/*/liboneapi.so
+
+# Go source build artifacts
+go-source/bin/
+
+# Tokenizer cache
+app/src/main/assets/cl100k_base.tiktoken
+
+# OS
+.DS_Store
+Thumbs.db

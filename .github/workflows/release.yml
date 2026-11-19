@@ -21,6 +21,10 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.24' }
       - uses: oven-sh/setup-bun@v2
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with: { ndk-version: r27c }
 
       - name: Build OneAPI artifacts
         run: |
@@ -40,8 +44,14 @@ jobs:
           cp newapi/apk/app/build/outputs/apk/debug/app-debug.apk NewAPI-v1.0.0-rc.15.apk
           (cd newapi/termux && ./build-release.sh ../../dist)
 
-      - name: Build CPA artifact
-        run: (cd cpa/termux && ./build-release.sh ../../dist)
+      - name: Build CPA artifacts (APK + Termux)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+        run: |
+          (cd cpa/apk && ./build-apk.sh)
+          cp cpa/apk/CPA-v*.apk CPA-v8.0.79.apk
+          (cd cpa/termux && ./build-release.sh ../../dist)
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
@@ -50,6 +60,7 @@ jobs:
           files: |
             OneAPI-v0.6.10.apk
             NewAPI-v1.0.0-rc.15.apk
+            CPA-v8.0.79.apk
             dist/oneapi-termux-arm64.tar.gz
             dist/newapi-termux-arm64.tar.gz
             dist/cpa-termux-arm64.tar.gz

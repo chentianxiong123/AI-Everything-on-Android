@@ -6,7 +6,7 @@
 |---|---|---|---|
 | [`oneapi/`](oneapi/) | One API v0.6.10 | APK（DNS 劫持）+ Termux 裸二进制 | `com.example.oneapi` / `oneapi` |
 | [`newapi/`](newapi/) | New API v1.0.0-rc.15 | APK（DNS 劫持）+ Termux 裸二进制 | `com.example.newapi` / `newapi` |
-| [`cpa/`](cpa/) | CLIProxyAPI | Termux 裸二进制（官方静态包） | `cpa` |
+| [`cpa/`](cpa/) | CLIProxyAPI v8.0.79 | APK（NDK/Bionic 原生编译）+ Termux 裸二进制 | `com.example.cpa` / `cpa` |
 
 ## 两种打法的区别
 
@@ -19,6 +19,6 @@
 
 - `OneAPI-v0.6.10.apk` / `oneapi-termux-arm64.tar.gz`
 - `NewAPI-v1.0.0-rc.15.apk` / `newapi-termux-arm64.tar.gz`
-- `cpa-termux-arm64.tar.gz`
+- `CPA-v8.0.79.apk` / `cpa-termux-arm64.tar.gz`
 
 仓库不含任何上游源码和二进制（构建时下载官方 release），所有 patch/压测档案仅作历史参考。
