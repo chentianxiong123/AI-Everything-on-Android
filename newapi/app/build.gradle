@@ -1,11 +1,11 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.example.oneapi'
+    namespace 'com.example.newapi'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.example.oneapi'
+        applicationId 'com.example.newapi'
         minSdk 16
         targetSdk 35
         versionCode 1

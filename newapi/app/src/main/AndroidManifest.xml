@@ -30,7 +30,7 @@
             android:exported="false" />
 
         <service
-            android:name=".OneApiService"
+            android:name=".NewApiService"
             android:exported="true"
             android:foregroundServiceType="dataSync"
             android:process=":daemon" />

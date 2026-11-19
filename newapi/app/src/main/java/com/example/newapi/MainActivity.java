@@ -1,4 +1,4 @@
-package com.example.oneapi;
+package com.example.newapi;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -26,7 +26,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        prefs = getSharedPreferences("oneapi_config", MODE_PRIVATE);
+        prefs = getSharedPreferences("newapi_config", MODE_PRIVATE);
 
         portInput = findViewById(R.id.port_input);
         dnsInput = findViewById(R.id.dns_input);
@@ -43,8 +43,8 @@ public class MainActivity extends AppCompatActivity {
 
         startStopBtn.setOnClickListener(v -> {
             if (running) {
-                OneApiService.stopProcess();
-                stopService(new Intent(this, OneApiService.class));
+                NewApiService.stopProcess();
+                stopService(new Intent(this, NewApiService.class));
                 startStopBtn.setText("启动");
                 running = false;
                 statusText.setText("状态: 已停止");
@@ -56,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
                 String envConf = envConfInput.getText().toString();
                 prefs.edit().putString("port", port).putString("dns", dns).putString("env_conf", envConf).apply();
 
-                Intent intent = new Intent(this, OneApiService.class);
+                Intent intent = new Intent(this, NewApiService.class);
                 intent.putExtra("port", port.isEmpty() ? "3000" : port);
                 intent.putExtra("dns", dns.isEmpty() ? "8.8.8.8,8.8.4.4" : dns);
                 intent.putExtra("extra_env_conf", envConf);
@@ -85,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
         logPoller = new Runnable() {
             @Override
             public void run() {
-                String log = OneApiService.getLog();
+                String log = NewApiService.getLog();
                 logText.setText(log);
                 logText.scrollTo(0, 0);
                 handler.postDelayed(this, 500);  // 永远继续轮询，绝不因一次读失败而停止
@@ -94,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
         handler.postDelayed(logPoller, 500);
 
         new android.os.Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (OneApiService.isRunning()) {
+            if (NewApiService.isRunning()) {
                 statusText.setText("状态: 运行中");
                 openWebBtn.setEnabled(true);
             } else {

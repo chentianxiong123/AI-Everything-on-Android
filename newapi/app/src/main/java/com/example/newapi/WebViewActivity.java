@@ -1,4 +1,4 @@
-package com.example.oneapi;
+package com.example.newapi;
 
 import android.os.Bundle;
 import android.webkit.WebSettings;

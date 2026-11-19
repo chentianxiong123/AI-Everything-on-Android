@@ -1,4 +1,4 @@
-package com.example.oneapi;
+package com.example.newapi;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -18,14 +18,14 @@ import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
-public class OneApiService extends Service {
+public class NewApiService extends Service {
     private static boolean running = false;
     private static String lastPort = "3000";
     private static String lastDns = "8.8.8.8,8.8.4.4";
     private static String lastEnvConf = "";
 
     public static boolean isRunning() {
-        File pidFile = new File("/data/data/com.example.oneapi/files/oneapi.pid");
+        File pidFile = new File("/data/data/com.example.newapi/files/newapi.pid");
         if (!pidFile.exists()) return false;
         try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
             String pid = r.readLine();
@@ -40,13 +40,13 @@ public class OneApiService extends Service {
         }
     }
 
-    private static final String DATA_DIR = "/data/data/com.example.oneapi/files";
+    private static final String DATA_DIR = "/data/data/com.example.newapi/files";
 
     // 诊断日志：服务进入的每一步都写，即使 Go 进程没起来也能看到原因
     private void diag(String msg) {
-        android.util.Log.i("OneApiService", msg);
+        android.util.Log.i("NewApiService", msg);
         try {
-            File f = new File(DATA_DIR, "oneapi.log");
+            File f = new File(DATA_DIR, "newapi.log");
             f.getParentFile().mkdirs();
             try (FileWriter w = new FileWriter(f, true)) {
                 w.write(msg + "\n");
@@ -57,8 +57,8 @@ public class OneApiService extends Service {
     // 永远返回非空字符串，保证 MainActivity 的轮询不会中断
     public static String getLog() {
         StringBuilder sb = new StringBuilder();
-        File logFile = new File(DATA_DIR, "oneapi.log");
-        File pidFile = new File(DATA_DIR, "oneapi.pid");
+        File logFile = new File(DATA_DIR, "newapi.log");
+        File pidFile = new File(DATA_DIR, "newapi.pid");
         sb.append(isRunningStatic(pidFile) ? "[状态] 运行中" : "[状态] 未运行").append('\n');
         if (logFile.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(logFile))) {
@@ -72,7 +72,7 @@ public class OneApiService extends Service {
                 sb.append("[读取日志失败] ").append(e).append('\n');
             }
         }
-        File stdoutFile = new File(DATA_DIR, "oneapi.stdout.log");
+        File stdoutFile = new File(DATA_DIR, "newapi.stdout.log");
         if (stdoutFile.exists()) {
             sb.append("--- Go 进程输出 ---\n");
             try (BufferedReader r = new BufferedReader(new FileReader(stdoutFile))) {
@@ -109,7 +109,7 @@ public class OneApiService extends Service {
         // 前台服务是"尽力而为"：某些定制 ROM 即使声明了权限也可能拒绝。
         // 这里吞掉异常，保证 onStartCommand 仍能启动 Go 进程（大不了后台被系统回收）。
         try {
-            String channelId = "oneapi_channel";
+            String channelId = "newapi_channel";
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationChannel ch = new NotificationChannel(channelId, "NewAPI", NotificationManager.IMPORTANCE_LOW);
                 NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -159,9 +159,9 @@ public class OneApiService extends Service {
         diag("startProcess 开始 port=" + port + " dns=" + dns);
         File workDir = getFilesDir();
         diag("workDir=" + workDir.getAbsolutePath());
-        File pidFile = new File(workDir, "oneapi.pid");
-        File logFile = new File(workDir, "oneapi.log");
-        File bin = new File(getApplicationInfo().nativeLibraryDir, "liboneapi.so");
+        File pidFile = new File(workDir, "newapi.pid");
+        File logFile = new File(workDir, "newapi.log");
+        File bin = new File(getApplicationInfo().nativeLibraryDir, "libnewapi.so");
 
         diag("二进制路径=" + bin.getAbsolutePath() + " exists=" + bin.exists() + " executable=" + bin.canExecute());
         if (!bin.exists()) {
@@ -230,12 +230,12 @@ public class OneApiService extends Service {
             try (FileWriter w = new FileWriter(pidFile)) {
                 w.write(String.valueOf(pid));
             }
-            android.util.Log.i("OneApiService", "Started PID: " + pid + " in process: " + android.os.Process.myPid());
+            android.util.Log.i("NewApiService", "Started PID: " + pid + " in process: " + android.os.Process.myPid());
         } catch (Exception e) {
-            android.util.Log.w("OneApiService", "Could not save PID", e);
+            android.util.Log.w("NewApiService", "Could not save PID", e);
         }
 
-        File stdoutFile = new File(workDir, "oneapi.stdout.log");
+        File stdoutFile = new File(workDir, "newapi.stdout.log");
         new Thread(() -> {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream()));
                  FileWriter outWriter = new FileWriter(stdoutFile, true)) {
@@ -258,7 +258,7 @@ public class OneApiService extends Service {
         try {
             return (int) p.getClass().getMethod("pid").invoke(p);
         } catch (Exception e) {
-            File pidFile = new File("/data/data/com.example.oneapi/files/oneapi.pid");
+            File pidFile = new File("/data/data/com.example.newapi/files/newapi.pid");
             try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
                 return Integer.parseInt(r.readLine());
             } catch (Exception ex) {
@@ -268,7 +268,7 @@ public class OneApiService extends Service {
     }
 
     public static void stopProcess() {
-        File pidFile = new File("/data/data/com.example.oneapi/files/oneapi.pid");
+        File pidFile = new File("/data/data/com.example.newapi/files/newapi.pid");
         if (pidFile.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
                 String pid = r.readLine();
@@ -276,7 +276,7 @@ public class OneApiService extends Service {
                     Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill " + pid + " 2>/dev/null"});
                 }
             } catch (Exception e) {
-                android.util.Log.e("OneApiService", "Error stopping: " + e.getMessage());
+                android.util.Log.e("NewApiService", "Error stopping: " + e.getMessage());
             }
             pidFile.delete();
         }
