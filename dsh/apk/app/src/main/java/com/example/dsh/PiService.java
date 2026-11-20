@@ -25,8 +25,11 @@ public class PiService extends Service {
     private static String lastPort = "3080";
     // dsh web 启动后输出带 token 的 URL，提取后供 WebView 认证
     private static volatile String lastToken = null;
+    // 当前阶段状态，供 MainActivity 轮询显示（避免首次解压慢被误判"已停止"）
+    private static volatile String status = "未启动";
 
     public static String getLastToken() { return lastToken; }
+    public static String getStatus() { return status; }
 
     private static final String DATA_DIR = "/data/data/com.example.dsh/files";
     private static final String RUNTIME_DIR = DATA_DIR + "/runtime";
@@ -38,7 +41,7 @@ public class PiService extends Service {
     }
 
     public static boolean isRunning() {
-        File pidFile = new File(DATA_DIR, "pi.pid");
+        File pidFile = new File(DATA_DIR, "dsh.pid");
         if (!pidFile.exists()) return false;
         try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
             String pid = r.readLine();
@@ -56,7 +59,7 @@ public class PiService extends Service {
     private void diag(String msg) {
         android.util.Log.i("PiService", msg);
         try {
-            File f = new File(DATA_DIR, "pi.log");
+            File f = new File(DATA_DIR, "dsh.log");
             f.getParentFile().mkdirs();
             try (FileWriter w = new FileWriter(f, true)) {
                 w.write(msg + "\n");
@@ -66,7 +69,7 @@ public class PiService extends Service {
 
     public static String getLog() {
         StringBuilder sb = new StringBuilder();
-        File logFile = new File(DATA_DIR, "pi.log");
+        File logFile = new File(DATA_DIR, "dsh.log");
         sb.append(isRunning() ? "[状态] 运行中" : "[状态] 未运行").append('\n');
         if (logFile.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(logFile))) {
@@ -80,9 +83,9 @@ public class PiService extends Service {
                 sb.append("[读取日志失败] ").append(e).append('\n');
             }
         }
-        File stdoutFile = new File(DATA_DIR, "pi.stdout.log");
+        File stdoutFile = new File(DATA_DIR, "dsh.stdout.log");
         if (stdoutFile.exists()) {
-            sb.append("--- pi-web 输出 ---\n");
+            sb.append("--- dsh web 输出 ---\n");
             try (BufferedReader r = new BufferedReader(new FileReader(stdoutFile))) {
                 String line;
                 int n = 0;
@@ -102,12 +105,12 @@ public class PiService extends Service {
         try {
             String channelId = "pi_channel";
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel ch = new NotificationChannel(channelId, "Pi", NotificationManager.IMPORTANCE_LOW);
+                NotificationChannel ch = new NotificationChannel(channelId, "DSH", NotificationManager.IMPORTANCE_LOW);
                 NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                 if (nm != null) nm.createNotificationChannel(ch);
             }
             Notification notification = new NotificationCompat.Builder(this, channelId)
-                    .setContentTitle("Pi Web")
+                    .setContentTitle("DSH Web")
                     .setContentText("运行中")
                     .setSmallIcon(android.R.drawable.ic_menu_send)
                     .build();
@@ -183,6 +186,7 @@ public class PiService extends Service {
         }
 
         diag("解压 runtime 到 " + runtimeDir.getAbsolutePath());
+        status = "解压 runtime 中（首次较慢，约 971M，请耐心等待）…";
         runtimeDir.mkdirs();
         File tarball = new File(getFilesDir(), "runtime.tar");
         extractAsset("runtime.tar", tarball);
@@ -316,8 +320,9 @@ public class PiService extends Service {
 
     private void startProcess() throws Exception {
         diag("startProcess 开始 port=" + lastPort);
+        status = "准备启动 dsh web…";
         File workDir = getFilesDir();
-        File pidFile = new File(workDir, "pi.pid");
+        File pidFile = new File(workDir, "dsh.pid");
 
         if (!ensureRuntimeExtracted()) {
             diag("[致命] runtime 未就绪，启动中止");
@@ -335,8 +340,8 @@ public class PiService extends Service {
         }
         diag("dsh bin=" + dshBin.getAbsolutePath());
 
-        // pi-web 用 ~/.pi/agent 存配置/会话（和官方 pi 一致）。
-        // 把 HOME 指向 app 私有目录，让 pi-web 的 agent-dir 落在 filesDir/.pi/agent。
+        // pi-web 用 ~/.dsh/agent 存配置/会话（和官方 dsh 一致）。
+        // 把 HOME 指向 app 私有目录，让 dsh 的 agent-dir 落在 filesDir/.pi/agent。
         File homeDir = new File(workDir, "home");
         homeDir.mkdirs();
 
@@ -357,6 +362,7 @@ public class PiService extends Service {
              + " --port " + lastPort + " LD_LIBRARY_PATH=" + libDir.getAbsolutePath());
         Process proc = pb.start();
         diag("pb.start() 成功");
+        status = "dsh web 启动中（等待 token）…";
         running = true;
 
         try {
@@ -366,7 +372,7 @@ public class PiService extends Service {
             android.util.Log.w("PiService", "Could not save PID", e);
         }
 
-        File stdoutFile = new File(workDir, "pi.stdout.log");
+        File stdoutFile = new File(workDir, "dsh.stdout.log");
         new Thread(() -> {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream()));
                  FileWriter outWriter = new FileWriter(stdoutFile, true)) {
@@ -380,6 +386,7 @@ public class PiService extends Service {
                         java.util.regex.Matcher m = java.util.regex.Pattern.compile("token=([A-Za-z0-9_-]+)").matcher(line);
                         if (m.find()) {
                             lastToken = m.group(1);
+                            status = "运行中（token 已就绪，可打开界面）";
                             diag("已提取 dsh web token: " + lastToken.substring(0, Math.min(8, lastToken.length())) + "…");
                         }
                     }
@@ -398,7 +405,7 @@ public class PiService extends Service {
         try {
             return (int) p.getClass().getMethod("pid").invoke(p);
         } catch (Exception e) {
-            File pidFile = new File(DATA_DIR, "pi.pid");
+            File pidFile = new File(DATA_DIR, "dsh.pid");
             try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
                 return Integer.parseInt(r.readLine());
             } catch (Exception ex) {
@@ -408,7 +415,7 @@ public class PiService extends Service {
     }
 
     public static void stopProcess() {
-        File pidFile = new File(DATA_DIR, "pi.pid");
+        File pidFile = new File(DATA_DIR, "dsh.pid");
         if (pidFile.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
                 String pid = r.readLine();

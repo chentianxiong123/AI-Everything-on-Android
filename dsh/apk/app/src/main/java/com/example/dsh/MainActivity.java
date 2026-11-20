@@ -80,23 +80,20 @@ public class MainActivity extends AppCompatActivity {
                 String log = PiService.getLog();
                 logText.setText(log);
                 logText.scrollTo(0, 0);
+                // 轮询阶段状态（解压/启动/token 就绪），取代死板的 10s 检查
+                // 首次解压 971M 可能 1-2 分钟，必须显示进度而不是误判"已停止"
+                String st = PiService.getStatus();
+                statusText.setText("状态: " + st);
+                boolean ready = st.contains("token 已就绪");
+                openChatBtn.setEnabled(ready);
+                if (ready && !running) {
+                    running = true;
+                    startStopBtn.setText("停止");
+                }
                 handler.postDelayed(this, 600);
             }
         };
         handler.postDelayed(logPoller, 500);
-
-        // pi-web 首次启动要解压 runtime + 起 Next.js 服务，多等一会
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (PiService.isRunning()) {
-                statusText.setText("状态: 运行中");
-                openChatBtn.setEnabled(true);
-            } else {
-                statusText.setText("状态: 已停止（看日志排查）");
-                startStopBtn.setText("启动");
-                running = false;
-                openChatBtn.setEnabled(false);
-            }
-        }, 10000);
     }
 
     private void stopLogPoller() {

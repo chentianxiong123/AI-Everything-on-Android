@@ -25,7 +25,24 @@ public class WebViewActivity extends AppCompatActivity {
         s.setUseWideViewPort(true);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setTextZoom(100);
-        wv.setWebViewClient(new WebViewClient());
+        wv.setWebViewClient(new WebViewClient() {
+            // dsh web 启动时会输出 2 个 token（第 1 个过期，第 2 个有效）。首次加载可能拿到
+            // 过期 token 返 401；这里检测主资源 401 → 重读最新 token 再试（避免白屏）。
+            private int retries = 0;
+            @Override
+            public void onReceivedHttpError(WebView view, android.webkit.WebResourceRequest req,
+                                            android.webkit.WebResourceResponse err) {
+                if (req.isForMainFrame() && err.getStatusCode() == 401 && retries < 3) {
+                    retries++;
+                    String t = PiService.getLastToken();
+                    if (t != null) {
+                        view.loadUrl("http://127.0.0.1:" + portF + "/?token=" + t);
+                        return;
+                    }
+                }
+                super.onReceivedHttpError(view, req, err);
+            }
+        });
         wv.setWebChromeClient(new WebChromeClient());
         // dsh web 需要 token 认证：先等 PiService 从 stdout 提取到 token（dsh 启动后异步输出），
         // 再加载带 token 的 URL（WebView 会自动处理 cookie 和重定向）
