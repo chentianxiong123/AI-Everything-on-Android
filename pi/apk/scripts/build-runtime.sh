@@ -29,12 +29,11 @@ curl -fsSL --retry 3 "$TERMUX_BASE/dists/stable/main/binary-aarch64/Packages.gz"
 gunzip -f "$IDX.gz"
 
 # 从索引里取某个包的 Filename 字段（deb 相对路径）
-# 包名可能含正则特殊字符（如 libc++ 的 +），需先转义
+# 用字符串精确比较（不用正则），避免 libc++ 这类含 + 的包名在不同 awk 实现下转义不一致
 pkg_path() {
   local name="$1"
-  local esc; esc="$(printf '%s' "$name" | sed 's/[][\.*^$()+?{}|]/\\&/g')"
-  awk -v pkg="^Package: ${esc}\$" '
-    $0 ~ pkg { found=1; next }
+  awk -v want="Package: $name" '
+    $0 == want { found=1; next }
     found && /^Filename:/ { sub(/^Filename: /,""); print; exit }
     found && /^$/ { found=0 }
   ' "$IDX"
