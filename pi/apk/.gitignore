@@ -9,8 +9,10 @@ build/
 .gradle/
 local.properties
 
-# Runtime tarball（构建时生成，体积大，不提交）
+# Runtime tarball（构建时生成，体积 500MB+，绝不提交）
+app/src/main/assets/runtime.tar
 app/src/main/assets/runtime.tar.gz
+app/src/main/assets/*.tar
 
 # OS
 .DS_Store
@@ -18,3 +20,6 @@ Thumbs.db
 
 # runtime.version（构建时生成）
 app/src/main/assets/runtime.version
+
+# jniLibs（构建时由 build-runtime.sh 生成 libnode.so，不提交二进制）
+app/src/main/jniLibs/

@@ -10,6 +10,7 @@ import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.FileReader;
@@ -26,6 +27,11 @@ public class PiService extends Service {
     private static final String DATA_DIR = "/data/data/com.example.pi/files";
     private static final String RUNTIME_DIR = DATA_DIR + "/runtime";
     private static final String RUNTIME_MARKER = DATA_DIR + "/runtime.version";
+    // node 可执行文件：以 libnode.so 形式打进 jniLibs，安装时系统解压到
+    // nativeLibraryDir（SELinux 允许 app 从那里 exec；filesDir 下 exec 会被拒 error=13）。
+    private File nodeExecFile() {
+        return new File(getApplicationInfo().nativeLibraryDir, "libnode.so");
+    }
 
     public static boolean isRunning() {
         File pidFile = new File(DATA_DIR, "pi.pid");
@@ -160,7 +166,9 @@ public class PiService extends Service {
         }
 
         File nodeBin = new File(runtimeDir, "bin/node");
-        if (nodeBin.exists() && marker.exists()) {
+        File execNode = nodeExecFile();
+        // marker 与 exec node 同时存在才算就绪
+        if (nodeBin.exists() && execNode.exists() && marker.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(marker))) {
                 String v = r.readLine();
                 if (assetVersion.equals(v != null ? v.trim() : "")) {
@@ -293,6 +301,15 @@ public class PiService extends Service {
         f.delete();
     }
 
+    private void copyFile(File src, File dst) throws IOException {
+        try (InputStream in = new FileInputStream(src);
+             OutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+        }
+    }
+
     private void startProcess() throws Exception {
         diag("startProcess 开始 port=" + lastPort);
         File workDir = getFilesDir();
@@ -304,7 +321,7 @@ public class PiService extends Service {
         }
 
         File runtimeDir = new File(RUNTIME_DIR);
-        File nodeBin = new File(runtimeDir, "bin/node");
+        File nodeBin = nodeExecFile();   // 从 nativeLibraryDir 执行（SELinux 允许）
         File libDir = new File(runtimeDir, "lib");
         File piWebBin = new File(runtimeDir, "lib/node_modules/@agegr/pi-web/bin/pi-web.js");
 

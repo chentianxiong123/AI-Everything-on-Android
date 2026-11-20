@@ -24,8 +24,11 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
     packagingOptions {
-        // runtime tarball + node_modules are large; disable the default
-        // 64k-per-entry checks that would otherwise abort the build.
+        // legacy packaging：让 jniLibs 里的 libnode.so 在安装时解压到 nativeLibraryDir
+        // （该目录 SELinux 允许 app exec；非 legacy 模式下 .so 直接从 APK mmap，不可 exec）
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += ['META-INF/*.kotlin_module']
         }
