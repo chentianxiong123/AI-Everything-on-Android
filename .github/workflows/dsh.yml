@@ -1,0 +1,50 @@
+name: DSH Build (APK + Termux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['dsh/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: '17', distribution: temurin }
+      # 宿主 Node/npm：npm 装 dsh 到 runtime + node-gyp 交叉编译原生模块
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      # Android SDK/NDK preinstalled on ubuntu-latest runners
+      # gradle 用 wrapper 锁定 8.11.1（与 AGP 8.9.1 匹配）
+
+      # --- APK: 打包 Termux node + dsh 运行时到 assets，再 gradle 编译 Java 壳 ---
+      - name: Build APK
+        working-directory: dsh/apk
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          # NDK 路径动态检测（ubuntu-latest 装的是版本号目录），供 build-runtime.sh 交叉编译用
+          export ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | head -1)"
+          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME%/}"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          ./build-apk.sh
+      - name: Rename APK
+        run: |
+          mkdir -p dsh/dist
+          cp dsh/apk/app/build/outputs/apk/release/*.apk DSH-latest.apk 2>/dev/null || \
+          cp dsh/dist/DSH-latest.apk DSH-latest.apk
+
+      # --- Termux: 离线安装包（在 x86 上只能打包结构，无法跑 arm64 node）---
+      - name: Package Termux runtime (node_modules only)
+        working-directory: dsh
+        run: |
+          # 完整离线包建议在 Termux 设备上生成（含编译好的 require_builtin.node）。
+          echo "Termux offline tarball is built on-device (arm64). Skipping on CI x86."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DSH
+          path: |
+            DSH-latest.apk
