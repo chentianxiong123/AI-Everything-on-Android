@@ -20,7 +20,7 @@ jobs:
 
       - name: Build static binary -> APK payload
         run: |
-          (cd newapi && ./scripts/build-from-upstream.sh "$PWD/newapi/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so")
+          (cd newapi && ./scripts/build-from-upstream.sh)
       - name: Build APK
         working-directory: newapi/apk
         run: gradle assembleDebug --no-daemon

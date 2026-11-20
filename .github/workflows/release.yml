@@ -42,7 +42,7 @@ jobs:
         run: |
           # Official release binary is dynamically linked against glibc -> cannot run on Android.
           # Build a static arm64 binary from the clean upstream tag (same source, CGO_ENABLED=0).
-          (cd newapi && ./scripts/build-from-upstream.sh "$PWD/newapi/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so")
+          (cd newapi && ./scripts/build-from-upstream.sh)
           (cd newapi/apk && gradle assembleDebug --no-daemon)
           cp newapi/apk/app/build/outputs/apk/debug/app-debug.apk NewAPI-v1.0.0-rc.15.apk
           (cd newapi/termux && ./build-release.sh)
