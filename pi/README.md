@@ -1,7 +1,8 @@
-# Pi Runner — DeepSeek Harness / pi-coding-agent 安卓版
+# Pi Runner — pi coding agent 的安卓 Web UI
 
-在安卓手机上运行 [pi-coding-agent](https://github.com/earendil-works/pi)（pi，AI coding agent，12万⭐）。
-两种方式：**APK**（免 Termux，装个 App 就用）+ **Termux 裸二进制**。
+在安卓手机上运行 [pi coding agent](https://github.com/earendil-works/pi)（pi，AI coding agent），
+用社区成熟的 Web UI [**pi-web**](https://github.com/agegr/pi-web)（8334⭐）。
+两种方式：**APK**（免 Termux，装个 App 就用）+ **Termux 裸命令**。
 
 > pi 官方仓库：`earendil-works/pi`（TypeScript/Node）。本目录把它打包成安卓可用的形态。
 
@@ -9,12 +10,16 @@
 
 ## 它是什么
 
-pi 是一个"agent harness"——统一的 LLM API + agent 循环 + 工具（读文件/跑命令/编辑代码），
-可装扩展、技能、MCP。Pi Runner 把它塞进安卓：
+pi 是一个 AI coding agent（统一 LLM API + agent 循环 + 文件/命令/编辑工具）。
+**pi-web** 是它的社区 Web 界面：浏览器里聊天、跑 agent、配模型、浏览项目文件。
 
-- **APK**：内嵌 Termux arm64 版 Node.js + pi 完整运行时（node_modules + dist），
-  WebView 聊天界面 ↔ 本地 bridge.js ↔ pi RPC 引擎。免 Termux、免 root。
-- **Termux**：装个 Node + pi，用包装命令起停。
+Pi Runner 把 **pi-web** 塞进安卓：
+
+- **APK**：内嵌 Termux arm64 版 Node.js + pi-web 完整运行时，WebView 直接加载 pi-web 界面。免 Termux、免 root。
+- **Termux**：装个 Node + pi-web，一条命令起服务。
+
+**配置全在 pi-web 的网页里做**（模型 / API Key / 插件 / 技能 / 会话），和官方 pi 完全一致——
+它复用 pi 的 `~/.pi/agent` 配置和会话文件，不是阉割版。
 
 ---
 
@@ -30,7 +35,7 @@ bash build-apk.sh
 
 `build-apk.sh` 会：
 1. `scripts/build-runtime.sh` 从 Termux apt 源下载 arm64 bionic 版 Node + 6 个依赖 .so，
-   npm 装 pi（`--ignore-scripts`，pi 无需 native），裁剪后打成 `assets/runtime.tar.gz`（约 57MB）。
+   npm 装 `@agegr/pi-web`（自带 pi 全套依赖），裁剪后打成 `assets/runtime.tar`。
    **不提交任何二进制到 git**——构建时现下。
 2. gradle 编译 Java 壳（WebView + 前台服务）。
 
@@ -39,74 +44,70 @@ bash build-apk.sh
 ```
 APK 启动
   └─ PiService（前台服务）
-       ├─ 首次：解压 assets/runtime.tar.gz → filesDir/runtime
-       │         （bin/node + lib/*.so + lib/node_modules/pi）
-       ├─ 设 LD_LIBRARY_PATH=runtime/lib
-       ├─ spawn: runtime/bin/node bridge.js
-       │    └─ bridge.js: HTTP :8765 + spawn pi --mode rpc
-       └─ WebView 加载 http://127.0.0.1:8765 → 聊天界面
+       ├─ 首次：解压 assets/runtime.tar → filesDir/runtime
+       │         （bin/node + lib/*.so + lib/node_modules/@agegr/pi-web）
+       ├─ 设 LD_LIBRARY_PATH=runtime/lib，HOME=filesDir/home
+       ├─ spawn: runtime/bin/node .../pi-web/bin/pi-web.js --port 30141
+       └─ WebView 加载 http://127.0.0.1:30141 → pi-web 界面
 ```
 
-- **不用 pi-tui**：pi 的 TUI native 模块在 android 上自动跳过加载（`process.platform==='android'`），
-  桥接走 RPC（stdin/stdout JSONL），绕开 TUI。
-- 配置 Provider / API Key / 模型，在 App 界面填，启动即用。
+- **不需要自建配置页**：pi-web 自带 Web 配置界面，模型 / API Key / 插件全在网页里配。
+- **node-pty（web 终端）在安卓不可用**：它是 lazy require + try-catch，加载失败只影响网页终端功能，
+  聊天 / 配置 / 文件全部正常。
 
 ---
 
 ## 方式二：Termux
 
 ```bash
-# 安装（Node + pi + 包装命令）
-curl -fsSL https://raw.githubusercontent.com/chentianxiong123/oneapi-android-apk/master/pi/termux/install.sh | bash
+# 装 Node + pi-web
+pkg install -y nodejs
+npm install -g @agegr/pi-web@latest
 
-# 启动（配 API key）
-PI_APIKEY=sk-xxx PI_PROVIDER=anthropic PI_MODEL=claude-sonnet-4-5 pi-start
-
-pi-status    # 状态
-pi-logs      # 日志
-pi-stop      # 停止
+# 启动（默认 127.0.0.1:30141）
+pi-web --no-open
 ```
 
-聊天页：`http://127.0.0.1:8765`（手机浏览器打开）。
-
-### Termux 离线包
-
-```bash
-bash pi/termux/build-release.sh
-# 产物：~/pi-termux-arm64.tar.gz（内含完整 node_modules，离线可用）
-```
+手机浏览器打开 `http://127.0.0.1:30141`。首次进 **Models** 面板配 provider / API key。
 
 ---
 
 ## 配置
 
-| 环境变量 / UI 字段 | 说明 | 默认 |
-|---|---|---|
-| `PI_PORT` / 端口 | bridge 监听端口 | 8765 |
-| `PI_PROVIDER` / Provider | `anthropic` `openai` `deepseek` `openrouter` `groq` 等 | anthropic |
-| `PI_APIKEY` / API Key | 对应 provider 的 key | 空 |
-| `PI_MODEL` / 模型 | 模型 ID | claude-sonnet-4-5 |
+配置**全在 pi-web 网页里**（点界面里的 Models / Settings）：
+- Provider 登录 / API Key
+- 模型选择
+- 插件包、技能
+- 会话管理
 
-API Key 只传给 pi（运行时 `--api-key` 或对应 `*_API_KEY` 环境变量），不落盘明文（仅 App 私有目录）。
+APK 配置页**只需填端口**（默认 30141）。
+
+| 环境变量 | 说明 | 默认 |
+|---|---|---|
+| `PORT` / 端口 | pi-web 监听端口 | 30141 |
+| `PI_WEB_PASSWORD` | 浏览器访问密码（可选） | 无 |
+
+pi-web 默认只绑 `127.0.0.1`（不暴露到局域网），数据存在 app 私有目录 `filesDir/home/.pi/agent`。
 
 ---
 
 ## 体积
 
-- APK 下载：约 60-70MB（runtime.tar.gz 57MB 压缩 + Java 壳）
-- 装机后：约 250MB（node 49MB + 依赖 .so 48MB + pi node_modules 150MB）
+- APK 下载：约 **150MB**（pi-web 带 Next.js/React/xterm 全套，比纯 pi 大）
+- 装机后：约 600MB
+
+> 体积偏大是 pi-web 全功能 web UI 的代价。若只要轻量聊天，可后续做裁剪。
 
 ---
 
 ## CI
 
-见 `.github/workflows/pi.yml`（自动构建 APK + Termux 包）。
-Release 见 tag 触发的 `release.yml`。
+见 `.github/workflows/pi.yml`（自动构建 APK）。Release 见 `release.yml`。
 
 ---
 
 ## 已知限制
 
-- 首次启动解压 runtime 较慢（57MB），后续秒起。
-- pi 部分工具（剪贴板 native、X11）在安卓上自动降级，不影响核心 agent 循环。
-- WebView 聊天界面是精简版，复杂多步 agent 任务建议连桌面端用。
+- 首次启动解压 runtime 较慢（576MB），后续秒起。
+- node-pty（网页终端）在安卓 arm64 无预编译二进制，**网页终端功能不可用**；聊天/配置/文件不受影响。
+- APK 体积约 150MB（pi-web 全功能 web UI）。
