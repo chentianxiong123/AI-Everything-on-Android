@@ -14,7 +14,7 @@
 |---|---|
 | Termux 跑通 dsh web | ✅ 完成（编译原生模块 + web 出页面） |
 | APK 打包 | ✅ 完成（CI 绿，NDK 交叉编译 + 壳层改造） |
-| 真机验证 | ⏳ 待安装测试 |
+| 真机验证 | ⚠️ dsh web 启动 + token 提取 OK，浏览器验证界面正常；WebView 取 token 时序坑待修（见 DEBUG-LOG §8.3） |
 
 ---
 

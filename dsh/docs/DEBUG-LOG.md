@@ -215,12 +215,62 @@ runtime.tar 971M（dsh node_modules 比 pi-web 大），aapt2 压缩 assets 时 
 1. **原生模块**：NDK 交叉编译 node-addon-require-builtin（CI x86 上直接交叉编译，无需 arm64 runner）
 2. **token 认证**：PiService 提取 token → WebView 加载带 token URL
 
-### 待真机验证
-- 安装 APK，WebView 是否正确加载 DeepSeek Harness 界面（token 认证 + cookie）
-- dsh web 核心功能（聊天/配置）；koffi/node-pty 等可选原生模块若缺失，终端/子进程等功能可能受影响，
-  核心聊天/配置不依赖它们
+## 8. 真机验证（2026-11-20）
+
+### 8.1 APK 签名坑
+CI 构建成功但安装报 `INSTALL_PARSE_FAILED_NO_CERTIFICATES`——CI runner 无 `~/.android/debug.keystore`，
+`assembleRelease` 不签名。修复：`build.gradle` release 显式 `signingConfig signingConfigs.debug`
+（AGP 自动生成 keystore），侧载够用。
+
+### 8.2 dsh web 在 APK 内启动成功
+日志确认全链路 OK：
+```
+runtime.tar 解压 ✓ → node 可执行 ✓ → dsh bin 路径 ✓
+→ 启动 dsh web（libnode.so + bin.js web）✓ → 已提取 token ✓
+dsh web: http://127.0.0.1:3080/?token=...
+```
+
+### 8.3 WebView token 时序坑（核心，待修）
+**现象**：点"打开 DSH WEB"，WebView 白屏，顶部一行
+`dsh web authentication required; reopen the URL printed by dsh web.`（即 401）。
+
+**根因（时序竞态）**：dsh web 启动时输出 **2 个 token**（实测 log 只有 2 行）：
+```
+dsh web: http://127.0.0.1:3080/?token=sjlQSe...   ← 第 1 个，会过期
+ dsh web: http://127.0.0.1:3080/?token=AUJsim...   ← 第 2 个，有效
+```
+WebView 逻辑是"等 token 连续 4 次 500ms 不变（≈2s）再加载"。但用户点"打开"时 dsh web
+只输出了第 1 个 token，WebView 等 2s 没等到第 2 个，就判定第 1 个稳定并加载——
+第 1 个已过期 → 401。第 2 个有效 token 在 WebView 加载错之后才输出。
+
+### 8.4 交叉验证：dsh web 本身正常
+用第 2 个 token 手机浏览器打开 → **DeepSeek Harness 界面正常显示**（41184 字节，`<title>DeepSeek Harness</title>`）。
+手机内 `curl -L` 带 cookie 也拿到完整页面。**说明 dsh web / token / cookie 认证全 OK，
+问题纯粹是 WebView 取 token 的时序。**
+
+### 8.5 修复方向（未做，因重装会再刷 ~2G 存储）
+- **方案 A（推荐）**：WebView 用 `WebViewClient` 检测 401 / "authentication required" 页面，
+  自动重读 `PiService.getLastToken()`（最新）再 `loadUrl` 一次。能自动纠正过期 token。
+- **方案 B**：不靠"等稳定"，而是等 dsh web 完全 ready（log 不再增长，或固定延迟）再取最后 token。
+- 已验证有效 token 用 `tail -1` 取 log 最后一个 token 即可（手机内 `curl` 拿到 303/页面成功）。
 
 ---
 
-*记录时间：2026-11-20。DSH 在 Termux 跑通（编译 node-addon-require-builtin + dsh web 出页面）。
-APK 打包待续。*
+## 9. 经验教训（贯穿全程，血泪）
+
+1. **`pkill -f` 自杀**：`pkill -f "dsh"` 误杀 sshd（命令行含 dsh），`pkill -f "gh run download"`
+   匹到自己命令行。→ 杀进程用 `pgrep -x` 或精确模式，排除自身 PID。
+2. **反复刷手机存储**：每次装 989M APK + 首次解压 971M runtime ≈ 2G 写入，多次卸载重装累计刷了 3G+。
+   → 谨慎重装；runtime 已解压时不要重复解压；用户存储紧张时先问。
+3. **别过早判定"稳定"**：dsh web 会多次输出 token（刷新），靠"等 N 秒不变"有竞态。
+   → 对异步多阶段输出，要么检测 401 自动重试，要么等明确 ready 信号。
+4. **误判根因**：WebView 白屏先以为是"token 无效"，实际是 WebView 取 token 时序。
+   → 用浏览器/curl 交叉验证（直接访问有效 token 能出页面，就排除服务端问题）。
+5. **大 artifact 下载慢**：GitHub Actions artifact 存在 Azure Blob（非 github.com），
+   ghproxy 类前缀代理加速不了；本机带宽是瓶颈（~0.2-0.3MB/s，262MB 下 10+ 分钟）。
+   → 想快就把 APK 发成 GitHub Release（asset 在 github.com，可加速）。
+
+---
+
+*记录时间：2026-11-20。DSH 全链路跑通：Termux 编译原生模块 → CI 交叉编译 + 打包 APK →
+真机安装 → dsh web 启动 + token 提取。WebView 取 token 时序坑待修（方案 A）。*
