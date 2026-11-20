@@ -157,27 +157,68 @@ pgrep -af "bin/dsh web"        # 只匹配 node 的 dsh web 进程
 
 ---
 
-## 6. 结论与下一步
+## 6. APK 打包（已成功）
 
-### 结论
-**DSH 在 Android 可行。** 核心原生模块（node-addon-require-builtin）靠 Termux 编译解决，
-**不需要 jackwener 那套重量级 NDK 交叉编译**（他编译定制 Node + JNI；我们用现成 Termux node +
-只编译缺的原生模块）。
+复用 pi 的壳层（PiService/WebViewActivity/MainActivity），改造为 DSH。
 
-### 其它原生模块状态
-- `koffi`/`node-pty`/`dsh-subprocess-local`：dsh web 能起来出页面，说明**核心 web UI 不依赖它们**
-  （可能只影响终端/子进程等可选功能）。打包 APK 时按需处理。
+### 6.1 壳层改造
+- 包名 `com.example.pi` → `com.example.dsh`
+- 端口 30141 → **3080**（dsh web 默认）
+- 启动命令：`pi-web.js --port …` → `dsh lib/bin.js web --no-open`（dsh bin = `lib/bin.js`）
+- **token 提取**：dsh web 输出带 token 的 URL，PiService 排空 stdout 线程里正则匹配
+  `token=([A-Za-z0-9_-]+)` 存 `lastToken`，WebViewActivity 轮询等 token ready 后
+  加载 `http://127.0.0.1:3080/?token=XXX`（WebView 自动处理 cookie/重定向）。
+  （pi 无 token，WebView 直接加载 `/`；这是 dsh 的关键差异）
 
-### 下一步（打包 APK，待续）
-1. 复用 pi 的壳层（PiService/WebViewActivity），改：端口 3080、启动命令 `dsh web`
-2. build-runtime.sh 改成：npm 装 dsh + **编译 node-addon-require-builtin**（把 Termux 编译那套
-   搬进构建，CI 也用 Termux 交叉编译或 arm64 runner）
-3. 验证 WebView 加载 3080
+### 6.2 build-runtime.sh 改造
+- `[3/5]` npm 装 `@deepseek-ai/dsh`（替代 pi-web）；删 Next/swc 部分（dsh 无 Next）
+- `[3.5/5]` **NDK 交叉编译 node-addon-require-builtin**（dsh 必需的 android-arm64
+  原生模块）—— 这是 dsh 与 pi 的核心差异，pi 无原生模块
 
-### 可复用 pi 的资产
-- 壳层（PiService 排空 stdout、nativeLibraryDir 放 node、WebView 加载）
-- build-runtime.sh 骨架（下载 node、soname symlink、打 tar）
-- 关键差异：dsh 要多一步编译 node-addon-require-builtin；web 端口 3080；认证 cookie
+### 6.3 CI 踩坑（4 次迭代跑通）
+
+**坑 ⑥：`@deepseek-ai/dsh@*` 找不到版本**
+```
+npm error notarget No matching version found for @deepseek-ai/dsh@*.
+```
+dsh 的 latest tag 指向 prerelease（`0.2.2-rc.5`），CI 的 npm/registry 组合下
+`npm install @deepseek-ai/dsh`（latest）解析异常（Termux 上装成功可能因 registry 不同）。
+修复：**指定完整版本** `DSH_VERSION="0.2.2-rc.5"`，`DSH_SPEC="@deepseek-ai/dsh@0.2.2-rc.5"`。
+
+**坑 ⑦：NDK 路径检测**
+build-runtime.sh 用 `${ANDROID_NDK_HOME:-…/ndk-bundle}`，但 ubuntu runner 装的是版本号目录
+（`ndk/27.3.13750724`）。dsh.yml 里动态检测：`export ANDROID_NDK_HOME=$(ls -d $ANDROID_HOME/ndk/*/ | head -1)`。
+
+**NDK 交叉编译成功**（关键）：node-gyp + NDK clang 交叉编译 N-API addon（无 V8 内部依赖）：
+```bash
+export CC="$NDK_BIN/aarch64-linux-android21-clang"
+export CXX="$NDK_BIN/aarch64-linux-android21-clang++"
+npx node-gyp rebuild --arch=arm64 -- -Dnarb_product=require-builtin
+# → require_builtin.node 95032 字节 ✓
+```
+只有无害警告（`-Wno-cast-function-type-mismatch` 未识别）。
+
+**坑 ⑧：gradle compressReleaseAssets OOM（Java heap space）**
+runtime.tar 971M（dsh node_modules 比 pi-web 大），aapt2 压缩 assets 时 OOM（pi 548M 刚好过）。
+修复（双保险）：
+- `gradle.properties`：`-Xmx2048m` → `-Xmx4096m`
+- `build.gradle`：`androidResources { noCompress 'tar' }`（aapt 不压缩 tar）
+
+### 6.4 结果
+**CI 绿**（3m24s）：NDK 交叉编译 ✓ → runtime.tar 971M ✓ → gradle 壳编译 ✓ → APK 产出。
+
+---
+
+## 7. 结论
+
+**DSH Android 化成功。** 复用 pi 打法，额外解决两个 dsh 特有难点：
+1. **原生模块**：NDK 交叉编译 node-addon-require-builtin（CI x86 上直接交叉编译，无需 arm64 runner）
+2. **token 认证**：PiService 提取 token → WebView 加载带 token URL
+
+### 待真机验证
+- 安装 APK，WebView 是否正确加载 DeepSeek Harness 界面（token 认证 + cookie）
+- dsh web 核心功能（聊天/配置）；koffi/node-pty 等可选原生模块若缺失，终端/子进程等功能可能受影响，
+  核心聊天/配置不依赖它们
 
 ---
 
