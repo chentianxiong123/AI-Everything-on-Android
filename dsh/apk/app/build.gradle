@@ -22,6 +22,9 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            // 侧载需要签名；CI runner 可能无 ~/.android/debug.keystore，显式用 debug 签名
+            // （AGP 会自动生成 debug keystore）。侧载场景够用。
+            signingConfig signingConfigs.debug
         }
     }
     compileOptions {
