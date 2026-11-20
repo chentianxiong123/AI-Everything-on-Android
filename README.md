@@ -1,12 +1,13 @@
-# Android AI Gateway 聚合仓库
+# Android AI Gateway / Agent 聚合仓库
 
-在 Android 上运行 **One API / New API / CPA** 的发行仓库。顶层只做聚合，每个子目录是独立的一套：有自己的 README、构建脚本、CI workflow。
+在 Android 上运行 **One API / New API / CPA / Pi** 的发行仓库。顶层只做聚合，每个子目录是独立的一套：有自己的 README、构建脚本、CI workflow。
 
 | 目录 | 项目 | 打法 | 包名 / 命令 |
 |---|---|---|---|
 | [`oneapi/`](oneapi/) | One API v0.6.10 | APK（DNS 劫持）+ Termux 裸二进制 | `com.example.oneapi` / `oneapi` |
 | [`newapi/`](newapi/) | New API v1.0.0-rc.15 | APK（DNS 劫持）+ Termux 裸二进制 | `com.example.newapi` / `newapi` |
 | [`cpa/`](cpa/) | CLIProxyAPI v8.0.79 | APK（NDK/Bionic 原生编译）+ Termux 裸二进制 | `com.example.cpa` / `cpa` |
+| [`pi/`](pi/) | pi-coding-agent（pi） | APK（嵌 Node 运行时 + RPC 桥）+ Termux | `com.example.pi` / `pi` |
 
 ## 两种打法的区别
 
@@ -17,15 +18,16 @@
 
 全部 workflow 在根目录 `.github/workflows/`（GitHub Actions 只认根目录）：
 
-- `oneapi.yml` / `newapi.yml` / `cpa.yml`：各子目录**独立 CI**，`workflow_dispatch` 或改动各自 `**` 目录时自动构建 APK + Termux 两个产物，上传 artifact。
-- `release.yml`：**聚合发版**。打 `v*` tag（或手动填 tag）触发，一次性构建全部 6 个产物并自动发布 GitHub Release。
+- `oneapi.yml` / `newapi.yml` / `cpa.yml` / `pi.yml`：各子目录**独立 CI**，`workflow_dispatch` 或改动各自 `**` 目录时自动构建 APK + Termux 两个产物，上传 artifact。
+- `release.yml`：**聚合发版**。打 `v*` tag（或手动填 tag）触发，一次性构建全部产物并自动发布 GitHub Release。
 
 发版产物：
 
 - `OneAPI-v0.6.10.apk` / `oneapi-termux-arm64.tar.gz`
 - `NewAPI-v1.0.0-rc.15.apk` / `newapi-termux-arm64.tar.gz`
 - `CPA-v8.0.79.apk` / `cpa-termux-arm64.tar.gz`
+- `Pi-latest.apk`
 
-注：NewAPI 官方 release 二进制是动态链接 glibc，Android/Termux 跑不了，所以 CI 从上游 tag 静态编译（CGO_ENABLED=0）；CPA 的 APK 走 NDK/Bionic 原生编译（系统 DNS），Termux 包用官方静态包。
+注：NewAPI 官方 release 二进制是动态链接 glibc，Android/Termux 跑不了，所以 CI 从上游 tag 静态编译（CGO_ENABLED=0）；CPA 的 APK 走 NDK/Bionic 原生编译（系统 DNS），Termux 包用官方静态包。Pi 是 Node 栈，APK 内嵌 Termux arm64 版 Node.js + pi 完整运行时（WebView 聊天 ↔ bridge.js ↔ pi RPC），绕开 pi 的 TUI native；Termux 包直接 npm 装。
 
 仓库不含任何上游源码和二进制（构建时下载官方 release），所有 patch/压测档案仅作历史参考。

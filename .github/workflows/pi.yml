@@ -1,0 +1,49 @@
+name: Pi Build (APK + Termux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths: ['pi/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: '17', distribution: temurin }
+      # 宿主 Node/npm：用于 npm 装 pi 到 runtime（不是打进 APK 的 node）
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      # Android SDK preinstalled on ubuntu-latest runners
+      - name: Install gradle
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gradle
+
+      # --- APK: 打包 Termux node + pi 运行时到 assets，再 gradle 编译 Java 壳 ---
+      - name: Build APK
+        working-directory: pi/apk
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: ./build-apk.sh
+      - name: Rename APK
+        run: |
+          mkdir -p pi/dist
+          cp pi/apk/app/build/outputs/apk/release/*.apk Pi-latest.apk 2>/dev/null || \
+          cp pi/dist/Pi-latest.apk Pi-latest.apk
+
+      # --- Termux: 离线安装包（在 x86 上只能打包 node_modules 结构，无法跑 arm64 node）---
+      - name: Package Termux runtime (node_modules only)
+        working-directory: pi
+        run: |
+          # Termux 包需在 arm64 上构建；CI x86 只产出 node_modules 结构供参考。
+          # 完整离线包建议在 Termux 设备上用 pi/termux/build-release.sh 生成。
+          echo "Termux offline tarball is built on-device (arm64). Skipping on CI x86."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pi
+          path: |
+            Pi-latest.apk

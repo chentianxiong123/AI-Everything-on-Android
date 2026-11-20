@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pi Chat</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f0f1a; color: #e8e8f0;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 12px 16px; background: #16162a; border-bottom: 1px solid #2a2a40;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; font-weight: 600; flex: 1; }
+  #status { font-size: 12px; color: #888; }
+  #chat {
+    flex: 1; overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5; font-size: 15px; }
+  .user { align-self: flex-end; background: #4a6bfa; color: #fff; border-bottom-right-radius: 4px; }
+  .assistant { align-self: flex-start; background: #1e1e32; border-bottom-left-radius: 4px; }
+  .assistant.thinking { color: #999; font-style: italic; }
+  .tool { align-self: flex-start; background: #1a2a1e; color: #8f8; font-family: monospace; font-size: 12px; border-bottom-left-radius: 4px; }
+  .error { align-self: center; background: #3a1e1e; color: #f88; font-size: 13px; }
+  footer {
+    flex-shrink: 0; padding: 12px; background: #16162a; border-top: 1px solid #2a2a40;
+    display: flex; gap: 8px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  #input {
+    flex: 1; background: #0a0a14; border: 1px solid #2a2a40; border-radius: 20px;
+    color: #e8e8f0; padding: 10px 16px; font-size: 15px; outline: none; resize: none;
+    max-height: 120px; font-family: inherit;
+  }
+  #input:focus { border-color: #4a6bfa; }
+  #send {
+    background: #4a6bfa; color: #fff; border: none; border-radius: 20px;
+    padding: 0 20px; font-size: 15px; cursor: pointer;
+  }
+  #send:disabled { background: #333; color: #666; }
+  #stop { background: #fa4a6b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pi</h1>
+  <span id="status">连接中...</span>
+</header>
+<div id="chat"></div>
+<footer>
+  <textarea id="input" rows="1" placeholder="发消息给 Pi..."></textarea>
+  <button id="stop" style="display:none">停止</button>
+  <button id="send">发送</button>
+</footer>
+
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const stopBtn = document.getElementById('stop');
+const statusEl = document.getElementById('status');
+
+let busy = false;
+let currentAssistant = null;
+
+function addMsg(cls, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const j = await r.json();
+    statusEl.textContent = j.piRunning ? (j.model || 'ready') : '引擎未运行';
+  } catch (e) {
+    statusEl.textContent = '桥接未连接';
+  }
+}
+
+function setBusy(b) {
+  busy = b;
+  sendBtn.disabled = b;
+  stopBtn.style.display = b ? '' : 'none';
+}
+
+function extractText(content) {
+  // pi 的 content 可能是 string 或 [{type:'text',text:...}] 数组
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(c => (c && c.text) ? c.text : '').join('');
+  }
+  if (content && typeof content === 'object') {
+    // sections 对象（system）
+    if (content.text) return content.text;
+  }
+  return '';
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || busy) return;
+  input.value = '';
+  addMsg('user', text);
+  setBusy(true);
+  currentAssistant = addMsg('assistant', '思考中...');
+  currentAssistant.classList.add('thinking');
+
+  try {
+    const resp = await fetch('/api/prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    if (!resp.ok) {
+      const j = await resp.json().catch(() => ({}));
+      throw new Error(j.error || ('HTTP ' + resp.status));
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let sawDone = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const raw = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 2);
+        if (!raw) continue;
+        // 解析 SSE：data: {...} 或 event: xxx
+        let dataLine = null;
+        for (const line of raw.split('\n')) {
+          if (line.startsWith('data:')) dataLine = line.slice(5).trim();
+        }
+        if (raw.includes('event: done') || raw.includes('event: error')) {
+          if (raw.includes('event: error')) {
+            const m = raw.match(/data:\s*(.*)/);
+            if (m) {
+              try { const ej = JSON.parse(m[1]); addMsg('error', '错误: ' + (ej.error || m[1])); }
+              catch (e) { addMsg('error', '错误: ' + m[1]); }
+            }
+          }
+          sawDone = true;
+        }
+        if (dataLine && dataLine !== '{}' ) {
+          try {
+            const ev = JSON.parse(dataLine);
+            handlePiEvent(ev);
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    addMsg('error', '请求失败: ' + e.message);
+  } finally {
+    setBusy(false);
+    if (currentAssistant) currentAssistant.classList.remove('thinking');
+    currentAssistant = null;
+    checkStatus();
+  }
+}
+
+function handlePiEvent(ev) {
+  const t = ev.type;
+  if (t === 'message_start' && ev.message && ev.message.role === 'assistant') {
+    // 开始一条 assistant 消息
+    if (currentAssistant) currentAssistant.classList.remove('thinking');
+    if (!currentAssistant || !currentAssistant.dataset.assistant) {
+      currentAssistant = addMsg('assistant', '');
+      currentAssistant.dataset.assistant = '1';
+    }
+    return;
+  }
+  if (t === 'message_end' && ev.message && ev.message.role === 'assistant') {
+    const txt = extractText(ev.message.content);
+    if (currentAssistant && currentAssistant.dataset.assistant) {
+      currentAssistant.textContent = txt || '(空回复)';
+    } else {
+      addMsg('assistant', txt || '(空回复)');
+    }
+    return;
+  }
+  // 流式更新（如果有 delta）
+  if (t === 'message_update' && ev.message && ev.message.role === 'assistant') {
+    const txt = extractText(ev.message.content);
+    if (txt && currentAssistant && currentAssistant.dataset.assistant) {
+      currentAssistant.textContent = txt;
+      chat.scrollTop = chat.scrollHeight;
+    }
+    return;
+  }
+  // 工具调用
+  if (t === 'tool_call' || t === 'tool_execution_start') {
+    const name = ev.toolName || ev.name || ev.tool || 'tool';
+    if (currentAssistant && currentAssistant.dataset.assistant) {
+      currentAssistant.classList.remove('thinking');
+    }
+    addMsg('tool', '🔧 ' + name);
+    return;
+  }
+  if (t === 'error' || ev.error) {
+    addMsg('error', '错误: ' + (ev.error && ev.error.message ? ev.error.message : (ev.error || t)));
+  }
+}
+
+sendBtn.addEventListener('click', send);
+stopBtn.addEventListener('click', async () => {
+  await fetch('/api/stop', { method: 'POST' });
+});
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+});
+
+checkStatus();
+setInterval(checkStatus, 5000);
+input.focus();
+</script>
+</body>
+</html>

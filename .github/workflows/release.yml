@@ -24,6 +24,11 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.26.x' }
       - uses: oven-sh/setup-bun@v2
+      # Pi 需要 Node/npm（npm 装 pi 到 runtime）；不需 NDK（打包现成 Termux node）
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install gradle (Pi)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gradle
       - name: Setup Android NDK
         id: ndk
         uses: nttld/setup-ndk@v1
@@ -56,6 +61,13 @@ jobs:
           cp cpa/apk/CPA-v*.apk CPA-v8.0.79.apk
           (cd cpa/termux && ./build-release.sh)
 
+      - name: Build Pi (APK - Termux node + pi runtime, no NDK)
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          (cd pi/apk && ./build-apk.sh)
+          cp pi/dist/Pi-latest.apk Pi-latest.apk
+
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
@@ -64,6 +76,7 @@ jobs:
             OneAPI-v0.6.10.apk
             NewAPI-v1.0.0-rc.15.apk
             CPA-v8.0.79.apk
+            Pi-latest.apk
             oneapi/oneapi-termux-arm64.tar.gz
             newapi/newapi-termux-arm64.tar.gz
             cpa/cpa-termux-arm64.tar.gz

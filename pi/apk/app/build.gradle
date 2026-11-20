@@ -1,0 +1,46 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.example.pi'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.example.pi'
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        // Runtime (node + pi) is bundled as a compressed tarball in assets and
+        // extracted to filesDir on first launch, so no jniLibs / abiFilters needed.
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    packagingOptions {
+        // runtime tarball + node_modules are large; disable the default
+        // 64k-per-entry checks that would otherwise abort the build.
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+        }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22'
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core:1.12.0'
+}
