@@ -2,12 +2,13 @@
 # Build cpa-termux-arm64.tar.gz from upstream CLIProxyAPI official static no-plugin binary.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DIST="${1:-$HERE/dist}"
+DIST="${DIST:-$HERE/..}"   # output to the project dir (writable in CI)
 # Pin via env: CPA_TAG=v8.0.79 ; default = latest
 TAG="${CPA_TAG:-v8.0.79}"
 BIN_URL="https://github.com/router-for-me/CLIProxyAPI/releases/download/${TAG}/CLIProxyAPI_${TAG#v}_linux_aarch64_no-plugin.tar.gz"
 PANEL_URL="https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases/latest/download/management.html"
-STAGE="$DIST/stage"; TMP="$DIST/tmp"; mkdir -p "$STAGE" "$TMP"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/cpa-stage.XXXXXX")"; TMP="$(mktemp -d "${TMPDIR:-/tmp}/cpa-tmp.XXXXXX")"
+trap 'rm -rf "$STAGE" "$TMP"' EXIT
 echo "Downloading CPA $TAG no-plugin (static, musl-compatible)..."
 curl -fL --retry 3 -o "$TMP/cpa.tar.gz" "$BIN_URL"
 tar -xzf "$TMP/cpa.tar.gz" -C "$TMP"

@@ -29,10 +29,10 @@ jobs:
 
       - name: Build Termux tarball
         working-directory: newapi/termux
-        run: ./build-release.sh ../../dist
+        run: ./build-release.sh
       - uses: actions/upload-artifact@v4
         with:
           name: NewAPI
           path: |
             NewAPI-v1.0.0-rc.15.apk
-            dist/newapi-termux-arm64.tar.gz
+            newapi/newapi-termux-arm64.tar.gz

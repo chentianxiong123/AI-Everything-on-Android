@@ -36,7 +36,7 @@ jobs:
             https://github.com/songquanpeng/one-api/releases/download/v0.6.10/one-api-arm64
           (cd oneapi/apk && python3 align_fix.py app/src/main/jniLibs/arm64-v8a/liboneapi.so && gradle assembleDebug --no-daemon)
           cp oneapi/apk/app/build/outputs/apk/debug/app-debug.apk OneAPI-v0.6.10.apk
-          (cd oneapi/termux && ./build-release.sh ../../dist)
+          (cd oneapi/termux && ./build-release.sh)
 
       - name: Build NewAPI (APK + Termux, static upstream build)
         run: |
@@ -45,7 +45,7 @@ jobs:
           (cd newapi && ./scripts/build-from-upstream.sh "$PWD/newapi/apk/app/src/main/jniLibs/arm64-v8a/libnewapi.so")
           (cd newapi/apk && gradle assembleDebug --no-daemon)
           cp newapi/apk/app/build/outputs/apk/debug/app-debug.apk NewAPI-v1.0.0-rc.15.apk
-          (cd newapi/termux && ./build-release.sh ../../dist)
+          (cd newapi/termux && ./build-release.sh)
 
       - name: Build CPA (APK + Termux)
         env:
@@ -54,7 +54,7 @@ jobs:
         run: |
           (cd cpa/apk && ./build-apk.sh)
           cp cpa/apk/CPA-v*.apk CPA-v8.0.79.apk
-          (cd cpa/termux && ./build-release.sh ../../dist)
+          (cd cpa/termux && ./build-release.sh)
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
@@ -64,6 +64,6 @@ jobs:
             OneAPI-v0.6.10.apk
             NewAPI-v1.0.0-rc.15.apk
             CPA-v8.0.79.apk
-            dist/oneapi-termux-arm64.tar.gz
-            dist/newapi-termux-arm64.tar.gz
-            dist/cpa-termux-arm64.tar.gz
+            oneapi/oneapi-termux-arm64.tar.gz
+            newapi/newapi-termux-arm64.tar.gz
+            cpa/cpa-termux-arm64.tar.gz

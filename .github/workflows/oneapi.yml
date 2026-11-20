@@ -30,10 +30,10 @@ jobs:
 
       - name: Build Termux tarball
         working-directory: oneapi/termux
-        run: ./build-release.sh ../../dist
+        run: ./build-release.sh
       - uses: actions/upload-artifact@v4
         with:
           name: OneAPI
           path: |
             OneAPI-v0.6.10.apk
-            dist/oneapi-termux-arm64.tar.gz
+            oneapi/oneapi-termux-arm64.tar.gz

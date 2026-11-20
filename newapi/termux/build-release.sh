@@ -7,12 +7,12 @@
 # same source as the APK payload but named as a normal executable.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DIST="${1:-$HERE/dist}"
+DIST="${DIST:-$HERE/..}"   # output to the project dir (writable in CI)
 UPSTREAM_REPO="https://github.com/QuantumNous/new-api.git"
 UPSTREAM_TAG="${NEWAPI_TAG:-v1.0.0-rc.15}"
 WORK="${NEWAPI_WORKDIR:-${TMPDIR:-/tmp}/newapi-termux-$$}"
 
-STAGE="$DIST/stage"; mkdir -p "$STAGE"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/newapi-stage.XXXXXX")"
 
 echo "=== 1/4 Fetch upstream $UPSTREAM_TAG ==="
 rm -rf "$WORK"

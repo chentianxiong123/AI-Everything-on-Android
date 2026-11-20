@@ -34,11 +34,11 @@ jobs:
       # --- Termux: official static no-plugin tarball ---
       - name: Build Termux tarball
         working-directory: cpa/termux
-        run: ./build-release.sh ../../dist
+        run: ./build-release.sh
 
       - uses: actions/upload-artifact@v4
         with:
           name: CPA
           path: |
             CPA-v8.0.79.apk
-            dist/cpa-termux-arm64.tar.gz
+            cpa/cpa-termux-arm64.tar.gz
