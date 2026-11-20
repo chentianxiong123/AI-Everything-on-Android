@@ -10,7 +10,6 @@ import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.FileReader;
@@ -22,10 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 public class PiService extends Service {
     private static boolean running = false;
-    private static String lastPort = "8765";
-    private static String lastProvider = "anthropic";
-    private static String lastApiKey = "";
-    private static String lastModel = "claude-sonnet-4-5";
+    private static String lastPort = "30141";
 
     private static final String DATA_DIR = "/data/data/com.example.pi/files";
     private static final String RUNTIME_DIR = DATA_DIR + "/runtime";
@@ -76,7 +72,7 @@ public class PiService extends Service {
         }
         File stdoutFile = new File(DATA_DIR, "pi.stdout.log");
         if (stdoutFile.exists()) {
-            sb.append("--- bridge 输出 ---\n");
+            sb.append("--- pi-web 输出 ---\n");
             try (BufferedReader r = new BufferedReader(new FileReader(stdoutFile))) {
                 String line;
                 int n = 0;
@@ -101,7 +97,7 @@ public class PiService extends Service {
                 if (nm != null) nm.createNotificationChannel(ch);
             }
             Notification notification = new NotificationCompat.Builder(this, channelId)
-                    .setContentTitle("Pi Runner")
+                    .setContentTitle("Pi Web")
                     .setContentText("运行中")
                     .setSmallIcon(android.R.drawable.ic_menu_send)
                     .build();
@@ -120,13 +116,7 @@ public class PiService extends Service {
         diag("=== onStartCommand 进入 ===");
         if (intent == null) { diag("intent 为 null，返回"); return START_STICKY; }
         String port = intent.getStringExtra("port");
-        String provider = intent.getStringExtra("provider");
-        String apiKey = intent.getStringExtra("apikey");
-        String model = intent.getStringExtra("model");
         if (port != null && !port.isEmpty()) lastPort = port;
-        if (provider != null && !provider.isEmpty()) lastProvider = provider;
-        if (apiKey != null) lastApiKey = apiKey;
-        if (model != null && !model.isEmpty()) lastModel = model;
 
         new Thread(() -> {
             try {
@@ -142,7 +132,7 @@ public class PiService extends Service {
         return START_STICKY;
     }
 
-    /** 写一段 assets 文本文件到目标位置 */
+    /** 释放 assets 文本/二进制到目标位置 */
     private void extractAsset(String name, File dest) throws IOException {
         try (InputStream in = getAssets().open(name);
              OutputStream out = new FileOutputStream(dest)) {
@@ -153,17 +143,14 @@ public class PiService extends Service {
     }
 
     /**
-     * 解压 assets/runtime.tar.gz 到 filesDir/runtime。
-     * 用内嵌的 busybox-free 方式：优先用系统 tar（API>=21 一般没有），退化到
-     * 内嵌的 node 来解（node -e 一段 tar.gz 解包脚本）。这里用最可靠的：
-     * 用 /system/bin/toybox tar（Android 6+ 自带），失败再用 node 自解。
+     * 解压 assets/runtime.tar 到 filesDir/runtime。
+     * runtime 是裸 tar（aapt2 会把 .tar.gz 解压改名，故打裸 .tar）。
      */
     private boolean ensureRuntimeExtracted() throws Exception {
         File runtimeDir = new File(RUNTIME_DIR);
         File marker = new File(RUNTIME_MARKER);
 
         String assetVersion = "1";
-        // 读 assets/runtime.version 判断是否需要重新解压
         try (InputStream in = getAssets().open("runtime.version");
              BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
             String v = r.readLine();
@@ -189,11 +176,9 @@ public class PiService extends Service {
         extractAsset("runtime.tar", tarball);
         diag("runtime.tar 大小=" + tarball.length() + " 字节");
 
-        // 清理旧 runtime
         deleteRecursive(runtimeDir);
         runtimeDir.mkdirs();
 
-        // 方式 A: toybox/busybox tar（裸 tar，无需 -z）
         boolean ok = extractWithTar(tarball, runtimeDir);
         if (!ok) {
             diag("系统 tar 失败，改用 node 自解");
@@ -204,7 +189,6 @@ public class PiService extends Service {
             return false;
         }
 
-        // 确保 node 可执行
         try {
             Runtime.getRuntime().exec(new String[]{"chmod", "755", nodeBin.getAbsolutePath()}).waitFor(5, TimeUnit.SECONDS);
         } catch (Exception e) {
@@ -246,7 +230,7 @@ public class PiService extends Service {
         return false;
     }
 
-    /** 兜底：用 node 手解 tar（ustar）。runtime 是裸 tar（非 gz），直接解析。 */
+    /** 兜底：用 node 手解 ustar。runtime 是裸 tar（非 gz），直接解析。 */
     private boolean extractWithNode(File tarball, File destDir) {
         try {
             File node = new File(destDir, "bin/node");
@@ -254,7 +238,6 @@ public class PiService extends Service {
                 diag("[致命] 兜底解压需要 node，但 node 不存在");
                 return false;
             }
-            // 这段脚本解析标准 ustar（无 gz），我们控制打包格式故够用
             String script =
                 "const fs=require('fs'),path=require('path');\n" +
                 "const tar=fs.readFileSync(process.argv[1]);\n" +
@@ -285,7 +268,7 @@ public class PiService extends Service {
             ProcessBuilder pb = new ProcessBuilder(
                 node.getAbsolutePath(), scriptFile.getAbsolutePath(),
                 tarball.getAbsolutePath(), destDir.getAbsolutePath());
-            pb.redirectErrorStream(true);
+            pb.directory(destDir);
             pb.environment().put("LD_LIBRARY_PATH", new File(destDir, "lib").getAbsolutePath());
             Process p = pb.start();
             StringBuilder out = new StringBuilder();
@@ -311,7 +294,7 @@ public class PiService extends Service {
     }
 
     private void startProcess() throws Exception {
-        diag("startProcess 开始 port=" + lastPort + " provider=" + lastProvider + " model=" + lastModel);
+        diag("startProcess 开始 port=" + lastPort);
         File workDir = getFilesDir();
         File pidFile = new File(workDir, "pi.pid");
 
@@ -323,34 +306,34 @@ public class PiService extends Service {
         File runtimeDir = new File(RUNTIME_DIR);
         File nodeBin = new File(runtimeDir, "bin/node");
         File libDir = new File(runtimeDir, "lib");
-        File bridgeJs = new File(workDir, "bridge.js");
+        File piWebBin = new File(runtimeDir, "lib/node_modules/@agegr/pi-web/bin/pi-web.js");
 
-        // bridge.js 从 assets 释放（便于独立更新）
-        extractAsset("bridge.js", bridgeJs);
-        diag("bridge.js 释放到 " + bridgeJs.getAbsolutePath() + " (" + bridgeJs.length() + " 字节)");
+        if (!piWebBin.exists()) {
+            diag("[致命] pi-web 不存在: " + piWebBin.getAbsolutePath());
+            return;
+        }
+        diag("pi-web=" + piWebBin.getAbsolutePath());
 
-        // 写配置（bridge 读取 pi-config.json）
-        File cfg = new File(workDir, "pi-config.json");
-        String cfgJson = String.format(
-            "{\"port\": %s, \"provider\": \"%s\", \"apiKey\": \"%s\", \"model\": \"%s\", \"runtimeDir\": \"%s\"}",
-            sanitize(lastPort), sanitize(lastProvider), sanitize(lastApiKey), sanitize(lastModel),
-            runtimeDir.getAbsolutePath());
-        try (FileWriter w = new FileWriter(cfg)) { w.write(cfgJson); }
-        diag("配置已写入 " + cfg.getAbsolutePath());
+        // pi-web 用 ~/.pi/agent 存配置/会话（和官方 pi 一致）。
+        // 把 HOME 指向 app 私有目录，让 pi-web 的 agent-dir 落在 filesDir/.pi/agent。
+        File homeDir = new File(workDir, "home");
+        homeDir.mkdirs();
 
         ProcessBuilder pb = new ProcessBuilder(
-            nodeBin.getAbsolutePath(), bridgeJs.getAbsolutePath());
-        pb.directory(workDir);
+            nodeBin.getAbsolutePath(), piWebBin.getAbsolutePath(),
+            "--port", lastPort, "--hostname", "127.0.0.1", "--no-open");
+        pb.directory(homeDir);
         pb.redirectErrorStream(true);
-        pb.environment().put("HOME", workDir.getAbsolutePath());
+        pb.environment().put("HOME", homeDir.getAbsolutePath());
         pb.environment().put("TMPDIR", workDir.getAbsolutePath());
-        // 关键：node 动态链接 libicu/openssl/sqlite 等，必须指向我们解压的 lib
+        // 关键：node 动态链接 libicu/openssl/sqlite 等，必须指向解压的 lib
         pb.environment().put("LD_LIBRARY_PATH", libDir.getAbsolutePath());
-        // pi 在 PATH 里找不到也能通过 NODE_PATH 找 node_modules
         pb.environment().put("NODE_PATH", new File(runtimeDir, "lib/node_modules").getAbsolutePath());
+        // 禁用 pi-web 自动开浏览器（无 GUI）；WebView 直接访问
+        pb.environment().put("PI_WEB_NO_OPEN", "1");
 
-        diag("启动 bridge: " + nodeBin.getAbsolutePath() + " " + bridgeJs.getAbsolutePath()
-             + " LD_LIBRARY_PATH=" + libDir.getAbsolutePath());
+        diag("启动 pi-web: " + nodeBin.getAbsolutePath() + " " + piWebBin.getAbsolutePath()
+             + " --port " + lastPort + " LD_LIBRARY_PATH=" + libDir.getAbsolutePath());
         Process proc = pb.start();
         diag("pb.start() 成功");
         running = true;
@@ -379,11 +362,6 @@ public class PiService extends Service {
         int exitCode = proc.waitFor();
         diag("[进程退出] exitCode=" + exitCode);
         running = false;
-    }
-
-    private static String sanitize(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static int getPid(Process p) {

@@ -13,7 +13,7 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
-    private EditText portInput, providerInput, apikeyInput, modelInput;
+    private EditText portInput;
     private Button startStopBtn, openChatBtn;
     private TextView statusText, logText;
     private SharedPreferences prefs;
@@ -29,19 +29,13 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences("pi_config", MODE_PRIVATE);
 
         portInput = findViewById(R.id.port_input);
-        providerInput = findViewById(R.id.provider_input);
-        apikeyInput = findViewById(R.id.apikey_input);
-        modelInput = findViewById(R.id.model_input);
         startStopBtn = findViewById(R.id.start_stop_btn);
         openChatBtn = findViewById(R.id.open_chat_btn);
         statusText = findViewById(R.id.status_text);
         logText = findViewById(R.id.log_text);
         logText.setMovementMethod(new ScrollingMovementMethod());
 
-        portInput.setText(prefs.getString("port", "8765"));
-        providerInput.setText(prefs.getString("provider", "anthropic"));
-        apikeyInput.setText(prefs.getString("apikey", ""));
-        modelInput.setText(prefs.getString("model", "claude-sonnet-4-5"));
+        portInput.setText(prefs.getString("port", "30141"));
 
         startStopBtn.setOnClickListener(v -> {
             if (running) {
@@ -54,18 +48,10 @@ public class MainActivity extends AppCompatActivity {
                 stopLogPoller();
             } else {
                 String port = portInput.getText().toString().trim();
-                String provider = providerInput.getText().toString().trim();
-                String apikey = apikeyInput.getText().toString().trim();
-                String model = modelInput.getText().toString().trim();
-                prefs.edit()
-                    .putString("port", port).putString("provider", provider)
-                    .putString("apikey", apikey).putString("model", model).apply();
+                prefs.edit().putString("port", port).apply();
 
                 Intent intent = new Intent(this, PiService.class);
-                intent.putExtra("port", port.isEmpty() ? "8765" : port);
-                intent.putExtra("provider", provider.isEmpty() ? "anthropic" : provider);
-                intent.putExtra("apikey", apikey);
-                intent.putExtra("model", model.isEmpty() ? "claude-sonnet-4-5" : model);
+                intent.putExtra("port", port.isEmpty() ? "30141" : port);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(intent);
                 } else {
@@ -82,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
         openChatBtn.setOnClickListener(v -> {
             String port = portInput.getText().toString().trim();
             Intent intent = new Intent(this, WebViewActivity.class);
-            intent.putExtra("port", port.isEmpty() ? "8765" : port);
+            intent.putExtra("port", port.isEmpty() ? "30141" : port);
             startActivity(intent);
         });
     }
@@ -99,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
         };
         handler.postDelayed(logPoller, 500);
 
-        // 延迟后刷新状态（runtime 首次解压较慢，多等一会）
+        // pi-web 首次启动要解压 runtime + 起 Next.js 服务，多等一会
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (PiService.isRunning()) {
                 statusText.setText("状态: 运行中");
@@ -110,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
                 running = false;
                 openChatBtn.setEnabled(false);
             }
-        }, 8000);
+        }, 10000);
     }
 
     private void stopLogPoller() {

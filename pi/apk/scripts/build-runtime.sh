@@ -5,8 +5,7 @@
 #   runtime/
 #     bin/node                    ← Termux arm64 bionic node 二进制
 #     lib/*.so                    ← node 动态依赖（libicu/openssl/sqlite/c-ares/z/ffi/libc++）
-#     lib/node_modules/           ← pi + 依赖树
-#     pi/dist/...                 ← pi CLI（含 bundle/cli.js）—— 见下方说明
+#     lib/node_modules/@agegr/pi-web  ← pi-web（自带 web UI + 配置界面 + pi 引擎全套依赖）
 #
 # 全部从 Termux 官方 apt 源 + npm registry 下载，不提交任何二进制到 git。
 set -euo pipefail
@@ -98,8 +97,10 @@ echo "node + libs 解包完成:"
 ls -la "$ROOTFS/bin/"
 du -sh "$ROOTFS/lib"
 
-echo "=== [3/5] npm 安装 pi 到 runtime/lib/node_modules ==="
-PI_SPEC="@earendil-works/pi-coding-agent${PI_VERSION:+@$PI_VERSION}"
+echo "=== [3/5] npm 安装 pi-web 到 runtime/lib/node_modules ==="
+# pi-web（@agegr/pi-web）自带完整 web UI + 配置界面，并依赖 pi 全套（pi-coding-agent 等）。
+# 装它一个就把 pi 引擎 + web 面板全带上，APK 只需 spawn 它、WebView 加载其界面。
+PI_SPEC="${PI_WEB_SPEC:-@agegr/pi-web${PI_VERSION:+@$PI_VERSION}}"
 # 关键：不要把 arm64 node 加进 PATH（宿主是 x86，调到 arm64 node 会崩）。
 # 用宿主 npm 的绝对路径，仅把目标目录设为 runtime prefix。
 HOST_NPM="${NPM_BIN:-$(command -v npm || true)}"
@@ -117,16 +118,18 @@ else
   PATH="$HOST_NODE_DIR:$PATH" "$HOST_NPM" install -g --ignore-scripts --prefix "$ROOTFS" "$PI_SPEC"
 fi
 
-PI_PKG_DIR="$ROOTFS/lib/node_modules/@earendil-works/pi-coding-agent"
-if [ ! -f "$PI_PKG_DIR/dist/bundle/cli.js" ]; then
-  echo "ERROR: pi cli.js 未找到于 $PI_PKG_DIR/dist/bundle/cli.js" >&2
+PI_PKG_DIR="$ROOTFS/lib/node_modules/@agegr/pi-web"
+if [ ! -f "$PI_PKG_DIR/bin/pi-web.js" ]; then
+  echo "ERROR: pi-web bin/pi-web.js 未找到于 $PI_PKG_DIR/bin/pi-web.js" >&2
   exit 1
 fi
-echo "pi cli: $PI_PKG_DIR/dist/bundle/cli.js"
+echo "pi-web bin: $PI_PKG_DIR/bin/pi-web.js"
 
-echo "=== [4/5] 裁剪 pi node_modules（去测试/文档/非 arm64 prebuilds）==="
-# pi 的 pi-tui native 在 android 上不加载，可删 prebuilds 减体积
-find "$PI_PKG_DIR" -type d -name prebuilds -exec rm -rf {} + 2>/dev/null || true
+echo "=== [4/5] 裁剪 node_modules（去测试/文档/非 arm64 prebuilds）==="
+# node-pty（web 终端用）在 android 无预编译，但它是 createTerminal 内 lazy require +
+# try-catch，加载失败只影响 web 终端，不影响聊天/配置/文件。删掉它的预编译目录减体积。
+find "$ROOTFS/lib/node_modules" -type d -path '*node-pty*build*' -exec rm -rf {} + 2>/dev/null || true
+find "$ROOTFS/lib/node_modules" -type d -name prebuilds -exec rm -rf {} + 2>/dev/null || true
 # 删掉各包的测试/文档目录
 find "$ROOTFS/lib/node_modules" -type d \( -name test -o -name tests -o -name docs -o -name .github \) \
   -prune -exec rm -rf {} + 2>/dev/null || true

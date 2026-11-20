@@ -14,7 +14,7 @@ public class WebViewActivity extends AppCompatActivity {
         setContentView(R.layout.activity_webview);
 
         String port = getIntent().getStringExtra("port");
-        if (port == null) port = "8765";
+        if (port == null) port = "30141";
 
         WebView wv = findViewById(R.id.webview);
         WebSettings s = wv.getSettings();
