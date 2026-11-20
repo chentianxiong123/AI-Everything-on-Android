@@ -13,12 +13,19 @@
 - **APK**：Java 壳 + `libdns_hook.so` 用 LD_PRELOAD 劫持 `/etc/resolv.conf`，配合 `GODEBUG=netdns=go=1`。适合普通手机直接安装。
 - **Termux 裸二进制**：官方静态 arm64 二进制，不 patch（CPA 用 `no-plugin` 静态包），靠 Termux 的 `/etc/resolv.conf`。安装即 `curl ...install.sh | sh`。
 
-## Release
+## CI / CD
 
-三个子目录的 CI（`.github/workflows/` 下各自独立）构建产物并上传 artifact。手动发版时把以下文件传到同一个 Release：
+全部 workflow 在根目录 `.github/workflows/`（GitHub Actions 只认根目录）：
+
+- `oneapi.yml` / `newapi.yml` / `cpa.yml`：各子目录**独立 CI**，`workflow_dispatch` 或改动各自 `**` 目录时自动构建 APK + Termux 两个产物，上传 artifact。
+- `release.yml`：**聚合发版**。打 `v*` tag（或手动填 tag）触发，一次性构建全部 6 个产物并自动发布 GitHub Release。
+
+发版产物：
 
 - `OneAPI-v0.6.10.apk` / `oneapi-termux-arm64.tar.gz`
 - `NewAPI-v1.0.0-rc.15.apk` / `newapi-termux-arm64.tar.gz`
 - `CPA-v8.0.79.apk` / `cpa-termux-arm64.tar.gz`
+
+注：NewAPI 官方 release 二进制是动态链接 glibc，Android/Termux 跑不了，所以 CI 从上游 tag 静态编译（CGO_ENABLED=0）；CPA 的 APK 走 NDK/Bionic 原生编译（系统 DNS），Termux 包用官方静态包。
 
 仓库不含任何上游源码和二进制（构建时下载官方 release），所有 patch/压测档案仅作历史参考。

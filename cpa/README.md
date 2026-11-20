@@ -3,7 +3,7 @@
 在 Android 上运行 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) v8.0.79。两套独立打法：
 
 ## APK（`apk/`）
-Java 壳 + **NDK/Bionic 原生编译**的 cli-proxy-api（API24+ arm64）。跟 OneAPI/NewAPI 不同，这条路线**不需要 DNS 劫持 hook**——NDK 编译版走 Android 系统 DNS（netd）。包名 `com.example.cpa`，默认端口 8317。
+Java 壳 + **NDK/Bionic 原生编译**的 cli-proxy-api（API24+ arm64）。跟 OneAPI/NewAPI 不同，这条路线**不需要 DNS 劫持 hook**——NDK 编译版走 Android 系统 DNS（netd）。包名 `com.example.cpa`，默认端口 8317。图标用 CPA 安卓项目的 banner。APK 内置 `management.html` 管理前端（Service 释放到 `static/` 并设 `MANAGEMENT_STATIC_PATH`，离线也有面板），WebView 打开 `/management.html`。
 ```bash
 cd apk && ./build-apk.sh     # 克隆上游 tag -> NDK 编译 -> 打 APK
 ```
@@ -19,4 +19,4 @@ cpa logs
 ```
 端口 8317，管理面板 `http://127.0.0.1:8317/management.html`，默认 key `123456`。
 注意：包含内置管理面板；配置文件 `~/.cpa/config.yaml`。
-CI：`.github/workflows/build.yml`（`cpa/**` 改动自动构建 APK + Termux 两种产物）。
+CI：根目录 `cpa.yml`（`cpa/**` 改动自动构建 APK + Termux 两种产物）。
