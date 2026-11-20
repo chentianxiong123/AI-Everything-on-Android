@@ -22,11 +22,13 @@ bash "$HERE/scripts/build-runtime.sh"
 
 echo "=== [2/3] gradle 编译 ==="
 cd "$HERE"
-# 优先用系统 gradle，其次 wrapper（本项目不带 gradlew 脚本，CI 里装好 gradle）
-if command -v gradle >/dev/null 2>&1; then
+# 用 wrapper 锁定 gradle 8.11.1（与 AGP 8.9.1 匹配），不依赖 CI 的 apt gradle 版本
+if [ -x "$HERE/gradlew" ]; then
+  "$HERE/gradlew" -p "$HERE" assembleRelease --no-daemon
+elif command -v gradle >/dev/null 2>&1; then
   gradle -p "$HERE" assembleRelease --no-daemon
 else
-  echo "ERROR: 找不到 gradle（CI 需安装 gradle 或提供 gradlew）" >&2
+  echo "ERROR: 找不到 gradlew 和 gradle" >&2
   exit 1
 fi
 

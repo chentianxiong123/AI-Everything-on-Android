@@ -17,10 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       # Android SDK preinstalled on ubuntu-latest runners
-      - name: Install gradle
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gradle
+      # gradle 用 wrapper 锁定 8.11.1（与 AGP 8.9.1 匹配），不需 apt gradle
 
       # --- APK: 打包 Termux node + pi 运行时到 assets，再 gradle 编译 Java 壳 ---
       - name: Build APK
