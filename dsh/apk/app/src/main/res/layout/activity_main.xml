@@ -8,7 +8,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Pi Web"
+        android:text="DSH Web"
         android:textSize="20sp"
         android:textStyle="bold"
         android:layout_marginBottom="8dp" />
@@ -16,7 +16,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="pi-web 自带 Web 界面：模型 / API Key / 会话 / 文件全部在网页里配置。启动后点「打开 Pi Web」即可。"
+        android:text="dsh 自带官方 Web 界面：模型 / API Key / 会话 / 文件全部在网页里配置。启动后点「打开 DSH Web」即可。"
         android:textSize="12sp"
         android:textColor="#888888"
         android:layout_marginBottom="16dp" />
@@ -57,7 +57,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="打开 Pi Web"
+            android:text="打开 DSH Web"
             android:enabled="false" />
     </LinearLayout>
 

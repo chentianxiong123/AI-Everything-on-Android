@@ -374,12 +374,13 @@ public class PiService extends Service {
                 while ((line = r.readLine()) != null) {
                     outWriter.write(line + "\n");
                     outWriter.flush();
-                    // 提取 dsh web 的 token（首次访问需 ?token= 认证）
-                    if (lastToken == null && line.contains("token=")) {
+                    // 提取 dsh web 的 token。dsh web 启动时可能输出多次/刷新 token（实测输出 2 次，
+                    // 第 2 个才是有效 token），每次都更新 lastToken 取最新，否则 WebView 用过期的第 1 个 → 401。
+                    if (line.contains("token=")) {
                         java.util.regex.Matcher m = java.util.regex.Pattern.compile("token=([A-Za-z0-9_-]+)").matcher(line);
                         if (m.find()) {
                             lastToken = m.group(1);
-                            diag("已提取 dsh web token");
+                            diag("已提取 dsh web token: " + lastToken.substring(0, Math.min(8, lastToken.length())) + "…");
                         }
                     }
                 }

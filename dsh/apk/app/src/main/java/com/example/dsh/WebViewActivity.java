@@ -31,12 +31,23 @@ public class WebViewActivity extends AppCompatActivity {
         // 再加载带 token 的 URL（WebView 会自动处理 cookie 和重定向）
         final String portF = port;
         new Thread(() -> {
-            String token = null;
-            for (int i = 0; i < 60; i++) {   // 最多等 30s
-                token = PiService.getLastToken();
-                if (token != null) break;
+            // dsh web 启动时会输出多次 token（刷新），需等 token 稳定（连续 4 次 500ms 相同 ≈ 2s 不变）
+            // 再加载，否则用第一个过期 token 会 401 白屏
+            String token = null, prev = null;
+            int stable = 0;
+            for (int i = 0; i < 90; i++) {   // 最多等 45s
+                String cur = PiService.getLastToken();
+                if (cur != null) {
+                    if (cur.equals(prev)) {
+                        if (++stable >= 4) { token = cur; break; }
+                    } else {
+                        stable = 0;
+                    }
+                    prev = cur;
+                }
                 try { Thread.sleep(500); } catch (InterruptedException e) { return; }
             }
+            if (token == null) token = PiService.getLastToken();   // 兜底（用当前最新）
             final String url = "http://127.0.0.1:" + portF + "/"
                 + (token != null ? "?token=" + token : "");
             runOnUiThread(() -> wv.loadUrl(url));
