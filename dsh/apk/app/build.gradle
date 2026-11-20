@@ -14,6 +14,11 @@ android {
         // extracted to filesDir on first launch, so no jniLibs / abiFilters needed.
     }
 
+    androidResources {
+        // runtime.tar 971M，aapt 压缩会 OOM（heap 4096m 也不够），不压缩直接打包
+        noCompress 'tar'
+    }
+
     buildTypes {
         release {
             minifyEnabled false
