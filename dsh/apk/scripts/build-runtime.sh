@@ -128,7 +128,8 @@ du -sh "$ROOTFS/lib"
 echo "=== [3/5] npm 安装 dsh 到 runtime/lib/node_modules ==="
 # dsh（@deepseek-ai/dsh）官方 CLI，自带内置 web UI，装它带上全套依赖。
 # APK 只需 spawn `dsh web`、WebView 加载其界面（带 token）。
-DSH_SPEC="${DSH_SPEC:-@deepseek-ai/dsh${DSH_VERSION:+@$DSH_VERSION}}"
+DSH_VERSION="${DSH_VERSION:-0.2.2-rc.5}"
+DSH_SPEC="@deepseek-ai/dsh@$DSH_VERSION"
 # 关键：不要把 arm64 node 加进 PATH（宿主是 x86，调到 arm64 node 会崩）。
 # 用宿主 npm 的绝对路径，仅把目标目录设为 runtime prefix。
 HOST_NPM="${NPM_BIN:-$(command -v npm || true)}"
