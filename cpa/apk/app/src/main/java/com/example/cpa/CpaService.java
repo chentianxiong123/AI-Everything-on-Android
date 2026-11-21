@@ -207,6 +207,9 @@ public class CpaService extends Service {
         pb.redirectErrorStream(true);
         pb.environment().put("HOME", workDir.getAbsolutePath());
         pb.environment().put("MANAGEMENT_STATIC_PATH", staticDir.getAbsolutePath());
+        // CPA v8+ 的 management 路由是懒注册的：只有设了 MANAGEMENT_PASSWORD（或 config secret-key）
+        // 才会 registerManagementRoutes()，否则 /v8/management/* 全部 404。默认管理密码 123456。
+        pb.environment().put("MANAGEMENT_PASSWORD", "123456");
         loadEnvConfig(pb, workDir);
 
         diag("准备 pb.start(): " + bin.getAbsolutePath() + " -config " + configFile.getAbsolutePath());
