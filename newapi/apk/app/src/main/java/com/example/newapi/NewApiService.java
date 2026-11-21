@@ -21,7 +21,7 @@ import java.io.StringWriter;
 public class NewApiService extends Service {
     private static boolean running = false;
     private static String lastPort = "3000";
-    private static String lastDns = "8.8.8.8,8.8.4.4";
+    private static String lastDns = "223.5.5.5,119.29.29.29,8.8.8.8";
     private static String lastEnvConf = "";
 
     public static boolean isRunning() {
@@ -133,10 +133,21 @@ public class NewApiService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         diag("=== onStartCommand 进入 ===");
-        if (intent == null) { diag("intent 为 null，返回"); return START_STICKY; }
-        String port = intent.getStringExtra("port");
-        String dns = intent.getStringExtra("dns");
-        String envConf = intent.getStringExtra("extra_env_conf");
+        // 重复启动保护：进程已在跑时直接返回。否则每次打开应用都会再起一个
+        // Go 进程抢同一端口，新进程启动失败还会覆盖 pid 文件，导致停止时杀错进程。
+        if (isRunning()) {
+            diag("服务已在运行，跳过重复启动");
+            return START_STICKY;
+        }
+        // intent 为 null 表示系统按 START_STICKY 重启服务，此时沿用上次参数启动
+        String port = null;
+        String dns = null;
+        String envConf = null;
+        if (intent != null) {
+            port = intent.getStringExtra("port");
+            dns = intent.getStringExtra("dns");
+            envConf = intent.getStringExtra("extra_env_conf");
+        }
         if (port != null) lastPort = port;
         if (dns != null) lastDns = dns;
         if (envConf != null) lastEnvConf = envConf;
@@ -197,12 +208,14 @@ public class NewApiService extends Service {
         }
 
         File envConfFile = new File(workDir, "env.conf");
-        if (lastEnvConf != null && !lastEnvConf.isEmpty()) {
+        // 只在 UI 显式传入时写入；绝不主动删除已有 env.conf，否则用户配的
+        // 环境变量（API key 等）会在每次启动时丢失。
+        if (lastEnvConf != null && !lastEnvConf.trim().isEmpty()) {
             try (FileWriter w = new FileWriter(envConfFile)) {
                 w.write(lastEnvConf.trim() + "\n");
             }
-        } else {
-            envConfFile.delete();
+        } else if (envConfFile.exists()) {
+            diag("保留已有 env.conf (" + envConfFile.length() + " 字节)");
         }
 
         File hookLib = new File(getApplicationInfo().nativeLibraryDir, "libdns_hook.so");

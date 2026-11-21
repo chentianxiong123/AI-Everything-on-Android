@@ -94,11 +94,21 @@ public class OneApiService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) return START_NOT_STICKY;
-        String port = intent.getStringExtra("port");
-        String dns = intent.getStringExtra("dns");
-        if (port == null) port = "3000";
-        if (dns == null) dns = "8.8.8.8,8.8.4.4";
+        // 重复启动保护：进程已在跑时直接返回。否则每次打开应用都会再起一个
+        // Go 进程抢同一端口，新进程启动失败还会覆盖 pid 文件，导致停止时杀错进程。
+        if (isRunning()) {
+            diag("服务已在运行，跳过重复启动");
+            return START_NOT_STICKY;
+        }
+        // intent 为 null 表示系统按 START_STICKY 重启服务，此时用默认参数启动
+        String port = "3000";
+        String dns = "223.5.5.5,119.29.29.29,8.8.8.8";
+        if (intent != null) {
+            String p = intent.getStringExtra("port");
+            String d = intent.getStringExtra("dns");
+            if (p != null && !p.isEmpty()) port = p;
+            if (d != null && !d.isEmpty()) dns = d;
+        }
         final String fPort = port;
         final String fDns = dns;
 

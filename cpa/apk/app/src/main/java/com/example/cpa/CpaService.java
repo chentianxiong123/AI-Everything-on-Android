@@ -141,9 +141,19 @@ public class CpaService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         diag("=== onStartCommand 进入 ===");
-        if (intent == null) { diag("intent 为 null，返回"); return START_STICKY; }
-        String port = intent.getStringExtra("port");
-        String envConf = intent.getStringExtra("extra_env_conf");
+        // 重复启动保护：进程已在跑时直接返回。否则每次打开应用都会再起一个
+        // Go 进程抢同一端口，新进程启动失败还会覆盖 pid 文件，导致停止时杀错进程。
+        if (isRunning()) {
+            diag("服务已在运行，跳过重复启动");
+            return START_STICKY;
+        }
+        // intent 为 null 表示系统按 START_STICKY 重启服务，此时沿用上次参数启动
+        String port = null;
+        String envConf = null;
+        if (intent != null) {
+            port = intent.getStringExtra("port");
+            envConf = intent.getStringExtra("extra_env_conf");
+        }
         if (port != null) lastPort = port;
         if (envConf != null) lastEnvConf = envConf;
 

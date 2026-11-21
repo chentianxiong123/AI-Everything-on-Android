@@ -65,6 +65,19 @@ public class WebViewActivity extends AppCompatActivity {
                 try { Thread.sleep(500); } catch (InterruptedException e) { return; }
             }
             if (token == null) token = PiService.getLastToken();   // 兜底（用当前最新）
+            // token 等不到说明服务可能没起来：额外探测端口，最多再等 15s
+            if (token == null) {
+                for (int i = 0; i < 30; i++) {
+                    try {
+                        java.net.Socket sock = new java.net.Socket("127.0.0.1", Integer.parseInt(portF));
+                        sock.close();
+                        break;
+                    } catch (Exception e) {
+                        try { Thread.sleep(500); } catch (InterruptedException ie) { return; }
+                    }
+                }
+                token = PiService.getLastToken();
+            }
             final String url = "http://127.0.0.1:" + portF + "/"
                 + (token != null ? "?token=" + token : "");
             runOnUiThread(() -> wv.loadUrl(url));
