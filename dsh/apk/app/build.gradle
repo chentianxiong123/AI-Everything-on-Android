@@ -19,11 +19,18 @@ android {
         noCompress 'tar'
     }
 
+    signingConfigs {
+        debug {
+            // 固定 keystore（commit 进 repo），所有 CI build 签名一致，覆盖安装不报签名不匹配
+            storeFile file('../dsh.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
-            // 侧载需要签名；CI runner 可能无 ~/.android/debug.keystore，显式用 debug 签名
-            // （AGP 会自动生成 debug keystore）。侧载场景够用。
             signingConfig signingConfigs.debug
         }
     }

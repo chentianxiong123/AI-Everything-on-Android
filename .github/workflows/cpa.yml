@@ -1,10 +1,15 @@
-name: CPA Build (APK + Termux)
+name: CPA Build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths: ['cpa/**']
+    inputs:
+      version:
+        description: '版本号（对齐上游 cpa）'
+        required: true
+        default: 'v8.0.79'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -13,32 +18,48 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { java-version: '17', distribution: temurin }
-      # Android SDK preinstalled on ubuntu-latest runners
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.26.x' }
-      - name: Setup Android NDK
-        id: ndk
-        uses: nttld/setup-ndk@v1
-        with: { ndk-version: r27c }
 
-      # --- APK: NDK/Bionic cross-compiled binary + Java shell ---
+      # 缓存 gradle
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-cpa-${{ hashFiles('cpa/apk/**/gradle-wrapper.properties', 'cpa/apk/**/build.gradle') }}
+
+      # 缓存 NDK 交叉编译产物（build 中间文件）
+      - name: Cache CPA build
+        uses: actions/cache@v4
+        with:
+          path: cpa/apk/app/src/main/jniLibs
+          key: cpa-ndk-${{ hashFiles('cpa/apk/build-apk.sh') }}
+
+      # --- APK: NDK/Bionic 交叉编译二进制 + Java 壳（用预装 NDK，省下载）---
       - name: Build APK
         working-directory: cpa/apk
         env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-          ANDROID_CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
-        run: ./build-apk.sh
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          export ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | head -1)"
+          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME%/}"
+          export ANDROID_CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          ./build-apk.sh
+
       - name: Rename APK
-        run: cp cpa/apk/CPA-v*.apk CPA-v8.0.79.apk
+        run: |
+          cp cpa/apk/CPA-v*.apk "CPA-${{ github.event.inputs.version }}.apk" 2>/dev/null || \
+          cp cpa/apk/app/build/outputs/apk/release/*.apk "CPA-${{ github.event.inputs.version }}.apk"
 
-      # --- Termux: official static no-plugin tarball ---
-      - name: Build Termux tarball
-        working-directory: cpa/termux
-        run: ./build-release.sh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: CPA
-          path: |
-            CPA-v8.0.79.apk
-            cpa/cpa-termux-arm64.tar.gz
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="cpa-${VERSION}"
+          gh release create "$TAG" "CPA-${VERSION}.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "CPA Runner ${VERSION}" \
+            --notes "CPA 安卓壳。上游 ${VERSION}。" \
+            || gh release upload "$TAG" "CPA-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

@@ -14,9 +14,18 @@ android {
         // extracted to filesDir on first launch, so no jniLibs / abiFilters needed.
     }
 
+    signingConfigs {
+        debug {
+            storeFile file('../pi.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.debug
         }
     }
     compileOptions {

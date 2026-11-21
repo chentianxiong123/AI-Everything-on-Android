@@ -1,25 +1,37 @@
-name: DSH Build (APK + Termux)
+name: DSH Build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths: ['dsh/**']
+    inputs:
+      version:
+        description: '版本号（对齐上游 @deepseek-ai/dsh）'
+        required: true
+        default: 'v0.2.2-rc.5'
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # gh release create 需要写权限（默认 token 只有 read）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { java-version: '17', distribution: temurin }
       # 宿主 Node/npm：npm 装 dsh 到 runtime + node-gyp 交叉编译原生模块
       - uses: actions/setup-node@v4
-        with: { node-version: '22' }
-      # Android SDK/NDK preinstalled on ubuntu-latest runners
-      # gradle 用 wrapper 锁定 8.11.1（与 AGP 8.9.1 匹配）
+        with:
+          node-version: '22'
+          cache: 'npm'                    # 缓存 npm 包（dsh 664 个依赖）
+
+      # 缓存 gradle（wrapper + 依赖），避免每次重新下载
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-dsh-${{ hashFiles('dsh/apk/**/gradle-wrapper.properties', 'dsh/apk/**/build.gradle') }}
 
       # --- APK: 打包 Termux node + dsh 运行时到 assets，再 gradle 编译 Java 壳 ---
       - name: Build APK
@@ -27,40 +39,24 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
-          # NDK 路径动态检测（ubuntu-latest 装的是版本号目录），供 build-runtime.sh 交叉编译用
+          # NDK 路径动态检测（供 build-runtime.sh 交叉编译 node-addon-require-builtin）
           export ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | head -1)"
           export ANDROID_NDK_HOME="${ANDROID_NDK_HOME%/}"
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
           ./build-apk.sh
       - name: Rename APK
         run: |
-          mkdir -p dsh/dist
-          cp dsh/apk/app/build/outputs/apk/release/*.apk DSH-latest.apk 2>/dev/null || \
-          cp dsh/dist/DSH-latest.apk DSH-latest.apk
+          cp dsh/apk/app/build/outputs/apk/release/*.apk "DSH-${{ github.event.inputs.version }}.apk"
 
-      # 构建完直接发布 Release（不绕 artifact 中转）
+      # 构建完直接发布 Release（tag = dsh-<version>）
       - name: Publish GitHub Release
-        if: github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="dsh-$(date +%Y%m%d)-${GITHUB_SHA::7}"
-          gh release create "$TAG" DSH-latest.apk \
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="dsh-${VERSION}"
+          gh release create "$TAG" "DSH-${VERSION}.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "DSH Runner $TAG" \
-            --notes "DSH (DeepSeek Harness) 安卓壳。覆盖安装（adb install -r）保留已解压 runtime。" \
-            || gh release upload "$TAG" DSH-latest.apk --repo "$GITHUB_REPOSITORY" --clobber
+            --title "DSH Runner ${VERSION}" \
+            --notes "DSH (DeepSeek Harness) 安卓壳。覆盖安装（adb install -r）保留已解压 runtime。上游 @deepseek-ai/dsh ${VERSION}。" \
+            || gh release upload "$TAG" "DSH-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
-
-      # --- Termux: 离线安装包（在 x86 上只能打包结构，无法跑 arm64 node）---
-      - name: Package Termux runtime (node_modules only)
-        working-directory: dsh
-        run: |
-          # 完整离线包建议在 Termux 设备上生成（含编译好的 require_builtin.node）。
-          echo "Termux offline tarball is built on-device (arm64). Skipping on CI x86."
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: DSH
-          path: |
-            DSH-latest.apk

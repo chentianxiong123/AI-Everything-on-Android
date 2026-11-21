@@ -1,10 +1,15 @@
-name: NewAPI Build (APK + Termux)
+name: NewAPI Build
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths: ['newapi/**']
+    inputs:
+      version:
+        description: '版本号（对齐上游 newapi）'
+        required: true
+        default: 'v1.0.0-rc.15'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -13,26 +18,41 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { java-version: '17', distribution: temurin }
-      # Android SDK preinstalled on ubuntu-latest runners
       - uses: actions/setup-go@v5
-        with: { go-version: '1.24' }
-      - uses: oven-sh/setup-bun@v2
+        with:
+          go-version: '1.24'
+          cache: true                     # 缓存 go modules
+      - uses: oven-sh/setup-bun@v2        # setup-bun 自带缓存
 
-      - name: Build static binary -> APK payload
-        run: |
-          (cd newapi && ./scripts/build-from-upstream.sh)
+      # 缓存 gradle
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-newapi-${{ hashFiles('newapi/apk/**/gradle-wrapper.properties', 'newapi/apk/**/build.gradle') }}
+
+      - name: Build static binary from upstream
+        run: (cd newapi && ./scripts/build-from-upstream.sh)
+
       - name: Build APK
         working-directory: newapi/apk
-        run: gradle assembleDebug --no-daemon
-      - name: Rename APK
-        run: cp newapi/apk/app/build/outputs/apk/debug/app-debug.apk NewAPI-v1.0.0-rc.15.apk
+        run: gradle assembleRelease --no-daemon
 
-      - name: Build Termux tarball
-        working-directory: newapi/termux
-        run: ./build-release.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: NewAPI
-          path: |
-            NewAPI-v1.0.0-rc.15.apk
-            newapi/newapi-termux-arm64.tar.gz
+      - name: Rename APK
+        run: |
+          cp newapi/apk/app/build/outputs/apk/release/*.apk "NewAPI-${{ github.event.inputs.version }}.apk"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="newapi-${VERSION}"
+          gh release create "$TAG" "NewAPI-${VERSION}.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "NewAPI Runner ${VERSION}" \
+            --notes "NewAPI 安卓壳（static arm64）。上游 ${VERSION}。" \
+            || gh release upload "$TAG" "NewAPI-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
