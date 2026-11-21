@@ -21,7 +21,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'                    # 缓存 npm 包（pi-web 依赖）
+          # 注意：不能写 cache: 'npm'。本项目用 npm install --prefix <runtime> 直接装包，
+          # 仓库里没有 package-lock.json，setup-node 的 npm 缓存模式会因找不到 lock 文件直接报错。
+          # npm 包缓存改用下方自建的 ~/.npm 目录缓存。
+
+      # npm 包缓存（~/.npm 是 npm 默认缓存目录，npm install 会自动命中）
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-pi-${{ hashFiles('pi/apk/scripts/build-runtime.sh') }}-${{ github.event.inputs.version }}
+          restore-keys: npm-pi-
 
       # 缓存 gradle
       - name: Cache Gradle

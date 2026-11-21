@@ -17,10 +17,13 @@ import java.io.FileWriter;
 import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.List;
 
 public class NewApiService extends Service {
     private static boolean running = false;
     private static String lastPort = "3000";
+    private static final String DEFAULT_DNS = "223.5.5.5,119.29.29.29,8.8.8.8";
+
     private static String lastDns = "223.5.5.5,119.29.29.29,8.8.8.8";
     private static String lastEnvConf = "";
 
@@ -128,6 +131,35 @@ public class NewApiService extends Service {
         } catch (Throwable t) {
             diag("[警告] startForeground 失败，继续无前台模式: " + t);
         }
+        registerNetworkWatcher();
+    }
+
+    /**
+     * 监听网络变化：WiFi ↔ 移动数据切换时，系统分配的 DNS 会变。
+     * Go 纯解析器每次查询都重读 resolv.conf，所以只要重写该文件就能生效，
+     * 无需重启后端进程。
+     */
+    private void registerNetworkWatcher() {
+        try {
+            android.content.BroadcastReceiver receiver = new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(android.content.Context context, android.content.Intent intent) {
+                    try {
+                        File workDir = getFilesDir();
+                        File resolv = new File(workDir, "resolv.conf");
+                        File dnsConf = new File(workDir, "dns.conf");
+                        List<String> list = SystemDns.resolveDnsList(context, dnsConf);
+                        SystemDns.writeResolvConf(resolv, list);
+                        diag("网络变化，resolv.conf 已刷新: " + list);
+                    } catch (Throwable t) {
+                        diag("[提示] 刷新 DNS 失败: " + t);
+                    }
+                }
+            };
+            registerReceiver(receiver, new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION));
+        } catch (Throwable t) {
+            diag("[提示] 注册网络监听失败: " + t);
+        }
     }
 
     @Override
@@ -197,15 +229,16 @@ public class NewApiService extends Service {
             }
         }
 
+        // DNS：优先用 files/dns.conf（用户显式指定），否则自动取系统 netd 分配的 DNS
+        // 并探测 UDP/53 可达性，不可达则回退公共 DNS。
+        // 注意：Go 二进制是 CGO_ENABLED=0 静态包，无法走 Android netd/cgo resolver，
+        // 且 Android 上没有 /etc/resolv.conf，所以必须由 LD_PRELOAD hook 提供这份文件。
+        File dnsConf = new File(workDir, "dns.conf");
         File resolvFile = new File(workDir, "resolv.conf");
-        try (FileWriter w = new FileWriter(resolvFile)) {
-            for (String s : dns.split("[,，\\s]+")) {
-                s = s.trim();
-                if (!s.isEmpty()) {
-                    w.write("nameserver " + s + "\n");
-                }
-            }
-        }
+        List<String> dnsList = SystemDns.resolveDnsList(this, dnsConf);
+        SystemDns.writeResolvConf(resolvFile, dnsList);
+        String dnsServers = String.join(",", dnsList);
+        diag("DNS 服务器=" + dnsServers);
 
         File envConfFile = new File(workDir, "env.conf");
         // 只在 UI 显式传入时写入；绝不主动删除已有 env.conf，否则用户配的
@@ -221,13 +254,21 @@ public class NewApiService extends Service {
         File hookLib = new File(getApplicationInfo().nativeLibraryDir, "libdns_hook.so");
 
         ProcessBuilder pb = new ProcessBuilder(
-            bin.getAbsolutePath(), "--port", port
+            bin.getAbsolutePath(), "--port", port,
+            // 日志目录必须显式指定：上游默认 "./logs"，Android 上 cwd=/ 导致
+            // mkdir /logs 失败（read-only file system）而启动退出。
+            "-log-dir", new File(workDir, "logs").getAbsolutePath()
         );
         pb.directory(workDir);
         pb.redirectErrorStream(true);
+        pb.environment().put("HOME", workDir.getAbsolutePath());
         pb.environment().put("TIKTOKEN_CACHE_DIR", tokenDir.getAbsolutePath());
         pb.environment().put("GODEBUG", "netdns=go=1");
-        pb.environment().put("DNS_SERVER", dns.split("[,，\\s]+")[0].trim());
+        pb.environment().put("DNS_SERVER", dnsServers.split("[,，\\s]+")[0].trim());
+        // SQLite 数据库路径：上游默认 "one-api.db" 相对 cwd，Android 上会落到只读根目录
+        pb.environment().put("SQLITE_PATH", new File(workDir, "one-api.db").getAbsolutePath());
+        // LD_PRELOAD hook 靠这个变量把 /etc/resolv.conf 重定向到 app 私有文件
+        pb.environment().put("CUSTOM_RESOLV_CONF", resolvFile.getAbsolutePath());
         loadEnvConfig(pb, workDir);
         if (hookLib.exists()) {
             pb.environment().put("LD_PRELOAD", hookLib.getAbsolutePath());
