@@ -15,7 +15,7 @@ dsh 是 TypeScript/Node 栈，且有**原生模块依赖**（node-addon），And
 1. **内嵌 Termux arm64 版 Node.js**（`libnode.so`）。
 2. npm 装 dsh 完整运行时。dsh 依赖的原生模块（如 node-addon-require-builtin）用 **Android NDK 交叉编译**（CI 里 `build-runtime.sh`）。
 3. 运行时打包进 APK `assets/runtime.tar`（`noCompress 'tar'` 避免 AAPT 压缩损坏）。首次启动解压到 `files/runtime/`（~971MB），`runtime.version` 标记版本，覆盖安装时版本未变则跳过重解压。
-4. 启动 `dsh web`：Service 从 stdout 提取 access token，WebView 带 token 加载。**token 时序 bug 已修**：dsh web 输出 2 个 token（第 1 个过期、第 2 个有效），WebView 401 时自动重读最新 token 重试（最多 3 次）。
+4. 启动 `dsh web`：Service 从 stdout 提取 access token，WebView 带 token 加载。**token 时序 bug 已修**：dsh web 输出 2 个 token（第 1 个过期、第 2 个有效），WebView 401 时自动重读最新 token 重试（最多 3 次）。token 拿不到时额外探测端口（最多再等 15s）再兜底加载。
 
 ### 下载 / 构建
 
@@ -24,7 +24,8 @@ dsh 是 TypeScript/Node 栈，且有**原生模块依赖**（node-addon），And
   ```bash
   gh workflow run dsh.yml -f version=v0.2.2-rc.5
   ```
-- CI 缓存：npm 包（`setup-node cache: npm`，dsh 664 依赖）+ gradle。NDK 路径动态检测（预装 NDK，省下载）。
+- CI 缓存：npm 包（`actions/cache ~/.npm`）+ gradle。NDK 路径动态检测（预装 NDK，省下载）。
+  > 注：仓库里没有 `package-lock.json`（用 `npm install --prefix <runtime>` 直接装包），因此 **不能用 `setup-node` 的 `cache: npm`**（找不到 lock 文件会直接报错），改用自建的 `~/.npm` 目录缓存。
 
 ## Termux 裸命令
 

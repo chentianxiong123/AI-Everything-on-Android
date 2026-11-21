@@ -39,7 +39,14 @@
 └─────────────────────────────────┘
 ```
 
-**打开直接进 WebView**：MainActivity 极简（18 行），`onCreate` 直接 `startForegroundService` 启动后台服务 + `startActivity` 进 WebView，**无配置页、无端口号输入**。后台服务起来监听本地端口，WebView 加载 `http://127.0.0.1:port/`。
+**打开直接进 WebView**：MainActivity 极简（18 行），`onCreate` 直接 `startForegroundService` 启动后台服务 + `startActivity` 进 WebView，**无配置页、无端口号输入**。后台服务起来监听本地端口，WebView 等端口就绪后再加载（避免服务未起就发请求导致 ERR_CONNECTION_REFUSED）。
+
+### 进程生命周期（Android 语义，不搞额外状态）
+
+- **启动**：`onStartCommand` 直接起后端进程，Service 用一个字段持有 `Process` 引用。
+- **停止**：`onDestroy` / `stopProcess()` 直接 `destroy()` 持有的进程，Android 会连带回收同 uid 子进程。
+- **不做 PID 文件**：Android 的 `Process` 没有可反射的 `pid()` 方法，PID 文件既拿不到也容易残留（曾出现 `kill -0 -1` 对所有进程返回成功，导致后端永远不再启动）。判断"后端是否在跑"一律用**端口监听探测**。
+- **配置持久化**：APK 启动时**不覆盖**已有的 `config.yaml` / `one-api.db` 等用户配置文件，只在文件不存在时写默认值。
 
 ### 为什么能执行内嵌二进制（W^X 绕过）
 
@@ -113,9 +120,9 @@ Termux 里 `curl ...install.sh | sh` 一键装，直接命令行跑。适合喜�
 
 1. **只手动触发**（`workflow_dispatch`），**push 绝不触发 CI**。想跑才跑，不浪费 Actions 额度。
 2. **版本号对齐上游**：`version` input 默认值 = 上游当前版本（oneapi `v0.6.10`、pi `v0.18.0` 等），不自立版本号。
-3. **build 完直接 `gh release create`**：tag = `项目名-版本`（如 `dsh-v0.2.2-rc.5`），不绕 artifact 中转，Release asset **直链可下载**。需要 `permissions: contents: write`。
+3. **build 完直接 `gh release create`**：tag = `项目名-版本`（如 `dsh-0.2.2-rc.5`、`pi-v0.18.0`），不绕 artifact 中转，Release asset **直链可下载**。需要 `permissions: contents: write`。
 4. **处处缓存**：
-   - npm 包：`setup-node` 的 `cache: npm`
+   - npm 包：pi/dsh 用 `actions/cache ~/.npm`（仓库无 lock 文件，`setup-node` 的 `cache: npm` 会直接报错）
    - go modules：`setup-go` 的 `cache: true`
    - gradle（wrapper + 依赖）：`actions/cache ~/.gradle`
    - 上游二进制（oneapi `liboneapi.so`）：`actions/cache` 按 version hash
@@ -145,17 +152,39 @@ gh workflow run dsh.yml -f version=v0.2.2-rc.5
 
 ---
 
+## 上游升级检查点
+
+CI 只接受 `version` 参数，上游发新版后改参数重跑即可。但以下三处与上游实现强相关，
+**遇到大版本/重构级更新时需人工确认**（小版本升级无需干预）：
+
+| 项目 | 检查什么 | 失效表现 |
+|---|---|---|
+| oneapi / newapi | 启动参数名：`--port`、`-log-dir`；环境变量 `SQLITE_PATH` | 后端启动即退出（日志里有 `mkdir /logs` 或 `unable to open database file`）|
+| cpa | ldflags 注入的变量名：`main.Version` / `main.Commit` | 版本显示 `dev`（不是版本号）|
+| pi / dsh | npm 包入口文件与原生模块依赖 | runtime 打包失败或服务起不来 |
+
+自检方式：构建后看 CI 日志是否出现 `ready in ...` / `API server started successfully`，
+以及 APK 装到手机上后端端口是否监听。
+
+---
+
 ## Release 下载
 
 每个 build 完成后自动发 Release，asset **直链可下载**：
 https://github.com/chentianxiong123/AI-Everything-on-Android/releases
 
-- `OneAPI-v0.6.10.apk`
-- `NewAPI-v1.0.0-rc.15.apk`
-- `CPA-v8.0.79.apk`
-- `Pi-v0.18.0.apk`
-- `DSH-v0.2.2-rc.5.apk`
+| Release tag | Asset |
+|---|---|
+| `oneapi-v0.6.10` | `OneAPI-v0.6.10.apk` |
+| `newapi-v1.0.0-rc.15` | `NewAPI-v1.0.0-rc.15.apk` |
+| `cpa-v8.0.79` | `CPA-v8.0.79.apk` |
+| `pi-v0.18.0` | `Pi-v0.18.0.apk` |
+| `dsh-0.2.2-rc.5` | `DSH-0.2.2-rc.5.apk` |
 
+直链形式：
+```
+https://github.com/chentianxiong123/AI-Everything-on-Android/releases/download/<tag>/<asset>
+```
 国内加速：在直链前加 `https://ghfast.top/`。
 
 ---

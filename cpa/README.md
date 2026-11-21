@@ -16,6 +16,19 @@
 
 内置 `management.html` 管理前端：Service 释放到 `static/` 并设 `MANAGEMENT_STATIC_PATH`，离线也有面板。WebView 打开 `/management.html` 可编辑 `config.yaml`（管理面板 key 默认 `123456`）。
 
+### 两个必填的环境变量
+
+- **`MANAGEMENT_PASSWORD=123456`**：CPA v8+ 的 management 路由是**懒注册**的——只有设了 `MANAGEMENT_PASSWORD`（或 config 里的 secret-key）才会注册路由，否则 `/v8/management/*` 全部返 404。Service 启动时固定注入。
+- **`MANAGEMENT_STATIC_PATH=<files>/static`**：指向内置的离线管理面板。
+
+### 配置不覆盖
+
+Service 启动时**不覆盖**已有的 `config.yaml`（只在文件不存在时写默认配置），避免把管理面板或从其他设备同步过来的渠道配置抹掉。渠道配置存于 `config.yaml`，改动由 CPA 自己的 file watcher 热重载（无需重启 App）。
+
+### 版本号注入
+
+CI 用 `-ldflags "-X main.Version=<tag> -X main.Commit=<tag>"` 注入版本，界面上显示的是真实版本号而非 `dev`。上游若改这两个变量名，需同步修改 `apk/build-apk.sh`。
+
 ### 下载 / 构建
 
 - **Release 直链**：https://github.com/chentianxiong123/AI-Everything-on-Android/releases（`CPA-v8.0.79.apk`）
@@ -24,6 +37,7 @@
   gh workflow run cpa.yml -f version=v8.0.79
   ```
 - CI 缓存：NDK 交叉编译产物（`jniLibs`）+ gradle。
+- **上游升级检查点**：ldflags 注入的 `main.Version` / `main.Commit` 变量名。失效表现：版本显示 `dev`。
 
 ## Termux 裸命令
 

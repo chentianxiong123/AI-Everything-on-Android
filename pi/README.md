@@ -18,7 +18,7 @@ pi 是 TypeScript/Node 栈，Android 上跑需要 Node.js。解法：
 4. **覆盖安装保留**：若 `runtime.version` 未变，跳过重解压（保留已解压 runtime + 用户数据）。
 5. 启动 pi 服务（`node lib/cli.js` 或 pi-web），WebView ↔ `bridge.js` ↔ pi 的 RPC/HTTP 接口通信。
 
-WebView 加载 pi-web 前端（浏览器里聊天、跑 agent、配模型、浏览项目文件）。
+WebView 加载 pi-web 前端（浏览器里聊天、跑 agent、配模型、浏览项目文件）。**加载前先等后端端口就绪**（Node 启动需数秒），否则直接发请求会得到 ERR_CONNECTION_REFUSED 白屏。
 
 ### 下载 / 构建
 
@@ -27,7 +27,8 @@ WebView 加载 pi-web 前端（浏览器里聊天、跑 agent、配模型、浏�
   ```bash
   gh workflow run pi.yml -f version=v0.18.0
   ```
-- CI 缓存：npm 包（`setup-node cache: npm`，pi-web 依赖多）+ gradle。build-apk.sh 下载 Termux node + npm 装 pi + 打包 assets + gradle assembleRelease（固定 keystore 签名）。
+- CI 缓存：npm 包（`actions/cache ~/.npm`）+ gradle。build-apk.sh 下载 Termux node + npm 装 pi + 打包 assets + gradle assembleRelease（固定 keystore 签名）。
+  > 注：仓库里没有 `package-lock.json`（用 `npm install --prefix <runtime>` 直接装包），因此 **不能用 `setup-node` 的 `cache: npm`**（找不到 lock 文件会直接报错），改用自建的 `~/.npm` 目录缓存。
 
 ## Termux 裸命令
 
