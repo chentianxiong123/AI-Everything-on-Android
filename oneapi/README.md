@@ -1,16 +1,25 @@
-# One API Android 发行
+# OneAPI — One API 的安卓发行
 
-在 Android 上运行 [One API](https://github.com/songquanpeng/one-api) v0.6.10，两套独立打法：
+在 Android 上运行 [One API](https://github.com/songquanpeng/one-api) `v0.6.10`。
 
-## APK（`apk/`）
-Java 壳 + DNS 劫持（`libdns_hook.so` LD_PRELOAD 重定向 `/etc/resolv.conf`）。包名 `com.example.oneapi`。图标用上游官方 logo。
-```bash
-cd apk && gradle assembleDebug --no-daemon
-```
-## Termux 裸二进制（`termux/`）
-官方静态 arm64 二进制 + 安装脚本。Termux 里：
+## APK（推荐）
+
+- **打开直接进 WebView**：无配置页、无端口号输入，点开即用（后台自动启动服务 + WebView 加载 `127.0.0.1:3000`）。
+- **固定签名**：`oneapi.keystore`（commit 进仓库），覆盖安装（`adb install -r`）保留数据。
+- 包名 `com.example.oneapi`，默认端口 3000。
+- 内部打法：Java 壳 + DNS 劫持（`libdns_hook.so` LD_PRELOAD 重定向 `/etc/resolv.conf`）+ 上游静态 arm64 二进制。
+
+### 下载 / 构建
+
+- **Release 直链**：https://github.com/chentianxiong123/AI-Everything-on-Android/releases（`OneAPI-v0.6.10.apk`）
+- **CI 手动触发**：Actions → "OneAPI Build" → Run workflow（版本默认 `v0.6.10`）
+  ```bash
+  gh workflow run oneapi.yml -f version=v0.6.10
+  ```
+
+## Termux 裸命令
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/chentianxiong123/oneapi-android-apk/master/oneapi/termux/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/chentianxiong123/AI-Everything-on-Android/master/oneapi/termux/install.sh | sh
 oneapi start
 ```
-CI：根目录 `oneapi.yml`（改 `oneapi/**` 自动构建 APK + tar.gz）。
