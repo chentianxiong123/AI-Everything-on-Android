@@ -175,14 +175,25 @@ public class CpaService extends Service {
             return;
         }
 
-        // CPA 配置文件：优先用 UI 传入的，否则首次写入默认配置
+        // CPA 配置文件：优先用 UI 显式传入的；否则仅在文件不存在时写默认配置。
+        // 注意：绝不能在每次启动时重写已存在的 config.yaml，否则会抹掉用户在管理面板
+        // 或从其他设备同步过来的渠道配置。
         File configFile = new File(workDir, "config.yaml");
-        String cfg = (lastEnvConf != null && !lastEnvConf.trim().isEmpty())
-                ? lastEnvConf.trim() : DEFAULT_CONFIG;
-        try (FileWriter w = new FileWriter(configFile)) {
-            w.write(cfg + "\n");
+        if (lastEnvConf != null && !lastEnvConf.trim().isEmpty()) {
+            try (FileWriter w = new FileWriter(configFile)) {
+                w.write(lastEnvConf.trim() + "\n");
+            }
+            diag("配置已写入 " + configFile.getAbsolutePath() + " (UI 指定, " + lastEnvConf.trim().length() + " 字节)");
+        } else if (!configFile.exists()) {
+            try (FileWriter w = new FileWriter(configFile)) {
+                w.write(DEFAULT_CONFIG + "\n");
+            }
+            diag("首次启动，已写入默认配置 " + configFile.getAbsolutePath());
+        } else {
+            diag("保留已有配置 " + configFile.getAbsolutePath() + " (" + configFile.length() + " 字节)");
         }
-        diag("配置已写入 " + configFile.getAbsolutePath() + " (" + cfg.length() + " 字节)");
+        // oauth.auth-dir 指向的目录必须存在，否则启动/重载时报 auth directory 错误
+        new File(workDir, "auths").mkdirs();
 
         // 内置管理前端：把 APK assets 里的 management.html 复制到 static/，
         // 通过 MANAGEMENT_STATIC_PATH 让 CPA 离线也能提供完整 Web 面板（不依赖联网下载）。
