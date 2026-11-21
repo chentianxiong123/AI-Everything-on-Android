@@ -15,6 +15,7 @@ public class WebViewActivity extends AppCompatActivity {
 
         String port = getIntent().getStringExtra("port");
         if (port == null) port = "3080";
+        final String portF = port;  // 匿名类 WebViewClient 访问需 final
 
         WebView wv = findViewById(R.id.webview);
         WebSettings s = wv.getSettings();
