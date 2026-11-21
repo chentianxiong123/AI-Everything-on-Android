@@ -21,11 +21,12 @@ import java.io.OutputStream;
 import java.util.concurrent.TimeUnit;
 
 public class PiService extends Service {
+    private static final int PORT = 30141;
     private static boolean running = false;
+    private static Process backendProcess = null;
     private static String lastPort = "30141";
 
     private static final String DATA_DIR = "/data/data/com.example.pi/files";
-    private static final int PORT = 30141;
     private static final String RUNTIME_DIR = DATA_DIR + "/runtime";
     private static final String RUNTIME_MARKER = DATA_DIR + "/runtime.version";
     // node 可执行文件：以 libnode.so 形式打进 jniLibs，安装时系统解压到
@@ -34,24 +35,6 @@ public class PiService extends Service {
         return new File(getApplicationInfo().nativeLibraryDir, "libnode.so");
     }
 
-    public static boolean isRunning() {
-        File pidFile = new File(DATA_DIR, "pi.pid");
-        if (!pidFile.exists()) return isPortListening(PORT);   // 无 pid 文件时用端口探测兜底
-        try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-            String pid = r.readLine();
-            if (pid == null || pid.isEmpty()) return isPortListening(PORT);
-            int pidNum;
-            try { pidNum = Integer.parseInt(pid.trim()); } catch (Exception e) { return isPortListening(PORT); }
-            if (pidNum <= 0) return isPortListening(PORT);   // -1/0 是无效 pid，改用端口探测
-            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill -0 " + pid + " 2>/dev/null && echo alive"});
-            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String result = br.readLine();
-            p.waitFor();
-            return "alive".equals(result);
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     private void diag(String msg) {
         android.util.Log.i("PiService", msg);
@@ -67,7 +50,7 @@ public class PiService extends Service {
     public static String getLog() {
         StringBuilder sb = new StringBuilder();
         File logFile = new File(DATA_DIR, "pi.log");
-        sb.append(isRunning() ? "[状态] 运行中" : "[状态] 未运行").append('\n');
+        sb.append(isBackendAlive() ? "[状态] 运行中" : "[状态] 未运行").append('\n');
         if (logFile.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(logFile))) {
                 String line;
@@ -124,12 +107,6 @@ public class PiService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         diag("=== onStartCommand 进入 ===");
-        // 重复启动保护：进程已在跑时直接返回。否则每次打开应用都会再起一个
-        // Node 进程抢同一端口，新进程启动失败还会覆盖 pid 文件，导致停止时杀错进程。
-        if (isRunning()) {
-            diag("服务已在运行，跳过重复启动");
-            return START_STICKY;
-        }
         // intent 为 null 表示系统按 START_STICKY 重启服务，此时沿用上次端口启动
         String port = null;
         if (intent != null) port = intent.getStringExtra("port");
@@ -324,7 +301,6 @@ public class PiService extends Service {
     private void startProcess() throws Exception {
         diag("startProcess 开始 port=" + lastPort);
         File workDir = getFilesDir();
-        File pidFile = new File(workDir, "pi.pid");
 
         if (!ensureRuntimeExtracted()) {
             diag("[致命] runtime 未就绪，启动中止");
@@ -362,18 +338,15 @@ public class PiService extends Service {
 
         diag("启动 pi-web: " + nodeBin.getAbsolutePath() + " " + piWebBin.getAbsolutePath()
              + " --port " + lastPort + " LD_LIBRARY_PATH=" + libDir.getAbsolutePath());
+        // 直接启动：Android 语义下 Service 就是后端的拥有者，
+        // 停止由 onDestroy/stopProcess 负责，不需要 PID 文件之类的外部状态。
+        Process old = backendProcess;
+        if (old != null) { try { old.destroy(); } catch (Exception ignored) {} }
         Process proc = pb.start();
+        backendProcess = proc;
         diag("pb.start() 成功");
         running = true;
 
-        try {
-            int pid = getPid(proc);
-            try (FileWriter w = new FileWriter(pidFile)) { w.write(String.valueOf(pid)); }
-        } catch (Exception e) {
-            // 拿不到 PID 时删除可能残留的旧 pid 文件（残留 -1 会让 isRunning 恒真）
-            try { pidFile.delete(); } catch (Exception ignored) {}
-            diag("[警告] 无法保存 PID（后续用端口探测兜底）: " + e);
-        }
 
         File stdoutFile = new File(workDir, "pi.stdout.log");
         new Thread(() -> {
@@ -390,38 +363,17 @@ public class PiService extends Service {
         }).start();
 
         int exitCode = proc.waitFor();
+        if (backendProcess == proc) backendProcess = null;
         diag("[进程退出] exitCode=" + exitCode);
         running = false;
     }
 
-    private static int getPid(Process p) {
-        try {
-            return (int) p.getClass().getMethod("pid").invoke(p);
-        } catch (Exception e) {
-            File pidFile = new File(DATA_DIR, "pi.pid");
-            try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-                return Integer.parseInt(r.readLine());
-            } catch (Exception ex) {
-                // 拿不到真实 PID 时绝不能返回 -1：写进 pid 文件后，
-                // isRunning() 里的 `kill -0 -1` 对所有进程都返回成功，
-                // 会误判"服务已在运行"从而永远不再启动。改为抛异常，由调用方跳过写 pid。
-                throw new IllegalStateException("无法获取子进程 PID", ex);
-            }
-        }
-    }
 
     public static void stopProcess() {
-        File pidFile = new File(DATA_DIR, "pi.pid");
-        if (pidFile.exists()) {
-            try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-                String pid = r.readLine();
-                if (pid != null && !pid.isEmpty()) {
-                    Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill " + pid + " 2>/dev/null"});
-                }
-            } catch (Exception e) {
-                android.util.Log.e("PiService", "Error stopping: " + e.getMessage());
-            }
-            pidFile.delete();
+        // 直接杀掉本 Service 持有的后端进程（Android 会连带回收同 uid 子进程）
+        Process p = backendProcess;
+        if (p != null) {
+            try { p.destroy(); } catch (Exception ignored) {}
         }
         running = false;
     }
@@ -429,16 +381,19 @@ public class PiService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        Process p = backendProcess;
+        if (p != null) { try { p.destroy(); } catch (Exception ignored) {} backendProcess = null; }
         super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
 
-    /** 端口探测兜底：pid 不可靠时用它判断后端是否真的在监听 */
-    private static boolean isPortListening(int port) {
+
+    /** 后端是否在跑：直接看端口有没有在监听（不需要 PID 文件） */
+    private static boolean isBackendAlive() {
         try (java.net.Socket sock = new java.net.Socket()) {
-            sock.connect(new java.net.InetSocketAddress("127.0.0.1", port), 800);
+            sock.connect(new java.net.InetSocketAddress("127.0.0.1", PORT), 500);
             return true;
         } catch (Exception e) {
             return false;

@@ -19,7 +19,9 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 
 public class CpaService extends Service {
+    private static final int PORT = 8317;
     private static boolean running = false;
+    private static Process backendProcess = null;
     private static String lastPort = "8317";
     private static String lastEnvConf = "";
 
@@ -32,27 +34,8 @@ public class CpaService extends Service {
         "  api-keys:\n" +
         "    - \"123456\"\n";
 
-    public static boolean isRunning() {
-        File pidFile = new File("/data/data/com.example.cpa/files/cpa.pid");
-        if (!pidFile.exists()) return isPortListening(PORT);   // 无 pid 文件时用端口探测兜底
-        try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-            String pid = r.readLine();
-            if (pid == null || pid.isEmpty()) return isPortListening(PORT);
-            int pidNum;
-            try { pidNum = Integer.parseInt(pid.trim()); } catch (Exception e) { return isPortListening(PORT); }
-            if (pidNum <= 0) return isPortListening(PORT);   // -1/0 是无效 pid，改用端口探测
-            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill -0 " + pid + " 2>/dev/null && echo alive"});
-            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String result = br.readLine();
-            p.waitFor();
-            return "alive".equals(result);
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     private static final String DATA_DIR = "/data/data/com.example.cpa/files";
-    private static final int PORT = 8317;
 
     // 诊断日志：服务进入的每一步都写，即使 Go 进程没起来也能看到原因
     private void diag(String msg) {
@@ -70,8 +53,7 @@ public class CpaService extends Service {
     public static String getLog() {
         StringBuilder sb = new StringBuilder();
         File logFile = new File(DATA_DIR, "cpa.log");
-        File pidFile = new File(DATA_DIR, "cpa.pid");
-        sb.append(isRunningStatic(pidFile) ? "[状态] 运行中" : "[状态] 未运行").append('\n');
+        sb.append(isBackendAlive() ? "[状态] 运行中" : "[状态] 未运行").append('\n');
         if (logFile.exists()) {
             try (BufferedReader r = new BufferedReader(new FileReader(logFile))) {
                 String line;
@@ -99,23 +81,6 @@ public class CpaService extends Service {
         return sb.toString();
     }
 
-    private static boolean isRunningStatic(File pidFile) {
-        if (!pidFile.exists()) return false;
-        try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-            String pid = r.readLine();
-            if (pid == null || pid.isEmpty()) return false;
-            int pidNum;
-            try { pidNum = Integer.parseInt(pid.trim()); } catch (Exception e) { return false; }
-            if (pidNum <= 0) return false;   // -1/0 都是无效 pid，不能做 kill -0 探测
-            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill -0 " + pid + " 2>/dev/null && echo alive"});
-            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String result = br.readLine();
-            p.waitFor();
-            return "alive".equals(result);
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     @Override
     public void onCreate() {
@@ -148,12 +113,6 @@ public class CpaService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         diag("=== onStartCommand 进入 ===");
-        // 重复启动保护：进程已在跑时直接返回。否则每次打开应用都会再起一个
-        // Go 进程抢同一端口，新进程启动失败还会覆盖 pid 文件，导致停止时杀错进程。
-        if (isRunning()) {
-            diag("服务已在运行，跳过重复启动");
-            return START_STICKY;
-        }
         // intent 为 null 表示系统按 START_STICKY 重启服务，此时沿用上次参数启动
         String port = null;
         String envConf = null;
@@ -182,7 +141,6 @@ public class CpaService extends Service {
         diag("startProcess 开始 port=" + port);
         File workDir = getFilesDir();
         diag("workDir=" + workDir.getAbsolutePath());
-        File pidFile = new File(workDir, "cpa.pid");
         File logFile = new File(workDir, "cpa.log");
         File bin = new File(getApplicationInfo().nativeLibraryDir, "libcpa.so");
 
@@ -241,21 +199,15 @@ public class CpaService extends Service {
         loadEnvConfig(pb, workDir);
 
         diag("准备 pb.start(): " + bin.getAbsolutePath() + " -config " + configFile.getAbsolutePath());
+        // 直接启动：Android 语义下 Service 就是后端的拥有者，
+        // 停止由 onDestroy/stopProcess 负责，不需要 PID 文件之类的外部状态。
+        Process old = backendProcess;
+        if (old != null) { try { old.destroy(); } catch (Exception ignored) {} }
         Process proc = pb.start();
+        backendProcess = proc;
         diag("pb.start() 成功");
         running = true;
 
-        try {
-            int pid = getPid(proc);
-            try (FileWriter w = new FileWriter(pidFile)) {
-                w.write(String.valueOf(pid));
-            }
-            android.util.Log.i("CpaService", "Started PID: " + pid + " in process: " + android.os.Process.myPid());
-        } catch (Exception e) {
-            // 拿不到 PID 时删除可能残留的旧 pid 文件（残留 -1 会让 isRunning 恒真）
-            try { pidFile.delete(); } catch (Exception ignored) {}
-            diag("[警告] 无法保存 PID（后续用端口探测兜底）: " + e);
-        }
 
         File stdoutFile = new File(workDir, "cpa.stdout.log");
         new Thread(() -> {
@@ -272,38 +224,17 @@ public class CpaService extends Service {
         }).start();
 
         int exitCode = proc.waitFor();
+        if (backendProcess == proc) backendProcess = null;
         diag("[进程退出] exitCode=" + exitCode);
         running = false;
     }
 
-    private static int getPid(Process p) {
-        try {
-            return (int) p.getClass().getMethod("pid").invoke(p);
-        } catch (Exception e) {
-            File pidFile = new File("/data/data/com.example.cpa/files/cpa.pid");
-            try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-                return Integer.parseInt(r.readLine());
-            } catch (Exception ex) {
-                // 拿不到真实 PID 时绝不能返回 -1：写进 pid 文件后，
-                // isRunning() 里的 `kill -0 -1` 对所有进程都返回成功，
-                // 会误判"服务已在运行"从而永远不再启动。改为抛异常，由调用方跳过写 pid。
-                throw new IllegalStateException("无法获取子进程 PID", ex);
-            }
-        }
-    }
 
     public static void stopProcess() {
-        File pidFile = new File("/data/data/com.example.cpa/files/cpa.pid");
-        if (pidFile.exists()) {
-            try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
-                String pid = r.readLine();
-                if (pid != null && !pid.isEmpty()) {
-                    Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill " + pid + " 2>/dev/null"});
-                }
-            } catch (Exception e) {
-                android.util.Log.e("CpaService", "Error stopping: " + e.getMessage());
-            }
-            pidFile.delete();
+        // 直接杀掉本 Service 持有的后端进程（Android 会连带回收同 uid 子进程）
+        Process p = backendProcess;
+        if (p != null) {
+            try { p.destroy(); } catch (Exception ignored) {}
         }
         running = false;
     }
@@ -311,6 +242,8 @@ public class CpaService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        Process p = backendProcess;
+        if (p != null) { try { p.destroy(); } catch (Exception ignored) {} backendProcess = null; }
         super.onDestroy();
     }
 
@@ -336,10 +269,11 @@ public class CpaService extends Service {
         } catch (Exception ignored) {}
     }
 
-    /** 端口探测兜底：pid 不可靠时用它判断后端是否真的在监听 */
-    private static boolean isPortListening(int port) {
+
+    /** 后端是否在跑：直接看端口有没有在监听（不需要 PID 文件） */
+    private static boolean isBackendAlive() {
         try (java.net.Socket sock = new java.net.Socket()) {
-            sock.connect(new java.net.InetSocketAddress("127.0.0.1", port), 800);
+            sock.connect(new java.net.InetSocketAddress("127.0.0.1", PORT), 500);
             return true;
         } catch (Exception e) {
             return false;
