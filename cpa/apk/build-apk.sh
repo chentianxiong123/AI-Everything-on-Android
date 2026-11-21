@@ -30,7 +30,7 @@ echo "=== 2/4 NDK cross-compile (CGO_ENABLED=1, GOOS=android, Bionic) ==="
 mkdir -p "$HERE/app/src/main/jniLibs/arm64-v8a"
 (cd "$WORK" && env GOTMPDIR="$GOTMP" GOCACHE="${GOCACHE:-/tmp/go-build-cpa}" \
     CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC="$CC_BIN" \
-    go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -checklinkname=0" \
+    go build -buildvcs=false -trimpath -ldflags="-s -w -buildid= -checklinkname=0 -X main.Version=${UPSTREAM_TAG} -X main.Commit=${UPSTREAM_TAG}" \
     -o "$HERE/app/src/main/jniLibs/arm64-v8a/libcpa.so" ./cmd/server/)
 
 echo "=== 3/4 Build APK ==="
