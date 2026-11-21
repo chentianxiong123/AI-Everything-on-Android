@@ -53,8 +53,27 @@ Android 10+ 有 **W^X 政策**：禁止从 `/data/data`（app 私有目录）执
 
 ### One API / New API（Go 网关，DNS 劫持）
 - 上游官方静态 arm64 二进制（Go 编译，CGO_ENABLED=0）打包进 `jniLibs`。
-- **DNS 劫持**：Go 程序默认读 `/etc/resolv.conf`（Android 上不存在）。用 `libdns_hook.so`（LD_PRELOAD）拦截 open/read 调用，把 `/etc/resolv.conf` 重定向到 app 私有的 resolv.conf（指向 127.0.0.1 或公共 DNS）。
-- 配合 `GODEBUG=netdns=go=1` 强制 Go 纯 DNS 解析。
+- **为什么需要 DNS 劫持**：Go 程序默认读 `/etc/resolv.conf`（Android 上不存在该文件），
+  且 CGO_ENABLED=0 的静态包没有 cgo resolver，无法走 Android netd。
+- **解法**：`libdns_hook.so`（LD_PRELOAD）拦截 `open`/`fopen`，把 `/etc/resolv.conf`
+  重定向到 app 私有的 `resolv.conf`；配合 `GODEBUG=netdns=go=1` 强制 Go 纯 DNS 解析。
+- **DNS 列表自动获取（用户零配置）**：
+  1. 用 `ConnectivityManager` 读取 netd 为当前网络分配的 DNS（WiFi 切换 / 流量切换自动跟随）；
+  2. 实际发一次 UDP/53 查询探测可达性（路由器与部分公共 DNS 会丢弃 UDP 查询）；
+  3. 不可达的剔除，并回退公共 DNS（223.5.5.5 / 119.29.29.29 / 180.76.76.76 / 8.8.8.8 / 1.1.1.1）；
+  4. 写入 `files/resolv.conf`；Go 纯解析器每次查询都重读该文件，**切网后免重启进程**。
+- **开启 Android 私人 DNS（DoT）时**：netd 下发的 DoT 服务器不响应 UDP/53，探测会判定
+  不可达并自动回退到公共 DNS，保证解析可用。
+- **应急出口（高级用户）**：在 app 数据目录放置 `dns.conf` 可强制指定 DNS，例如
+  `1.1.1.1,8.8.8.8`（每行一个或逗号分隔，`#` 开头为注释）。该文件存在时优先于自动探测。
+  路径：`/data/data/com.example.oneapi/files/dns.conf`（app 私有目录，需 root 或 adb 才能写入；
+  **普通用户无需使用，系统 DNS 已自动接管**）。
+
+### 其它必要的启动参数（one-api / new-api 共性）
+- `-log-dir <files>/logs`：上游默认 `./logs`，而 Android 进程 cwd 为 `/`，会导致
+  `mkdir /logs: read-only file system` 而启动失败。
+- `SQLITE_PATH=<files>/one-api.db`：上游默认 `one-api.db` 相对 cwd，同样落到只读根目录。
+- `HOME`、`CUSTOM_RESOLV_CONF`、`LD_PRELOAD`、`GODEBUG` 均由 Service 显式注入。
 
 ### CLIProxyAPI（NDK 原生编译）
 - **不用 DNS 劫持**：从上游 tag 克隆源码，用 Android NDK 交叉编译（Bionic libc + 系统 DNS netd），原生走 Android DNS。
