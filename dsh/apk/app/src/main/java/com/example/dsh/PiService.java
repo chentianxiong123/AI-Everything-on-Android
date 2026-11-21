@@ -32,6 +32,7 @@ public class PiService extends Service {
     public static String getStatus() { return status; }
 
     private static final String DATA_DIR = "/data/data/com.example.dsh/files";
+    private static final int PORT = 3080;
     private static final String RUNTIME_DIR = DATA_DIR + "/runtime";
     private static final String RUNTIME_MARKER = DATA_DIR + "/runtime.version";
     // node 可执行文件：以 libnode.so 形式打进 jniLibs，安装时系统解压到
@@ -42,10 +43,13 @@ public class PiService extends Service {
 
     public static boolean isRunning() {
         File pidFile = new File(DATA_DIR, "dsh.pid");
-        if (!pidFile.exists()) return false;
+        if (!pidFile.exists()) return isPortListening(PORT);   // 无 pid 文件时用端口探测兜底
         try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
             String pid = r.readLine();
-            if (pid == null || pid.isEmpty()) return false;
+            if (pid == null || pid.isEmpty()) return isPortListening(PORT);
+            int pidNum;
+            try { pidNum = Integer.parseInt(pid.trim()); } catch (Exception e) { return isPortListening(PORT); }
+            if (pidNum <= 0) return isPortListening(PORT);   // -1/0 是无效 pid，改用端口探测
             Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", "kill -0 " + pid + " 2>/dev/null && echo alive"});
             BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
             String result = br.readLine();
@@ -376,7 +380,9 @@ public class PiService extends Service {
             int pid = getPid(proc);
             try (FileWriter w = new FileWriter(pidFile)) { w.write(String.valueOf(pid)); }
         } catch (Exception e) {
-            android.util.Log.w("PiService", "Could not save PID", e);
+            // 拿不到 PID 时删除可能残留的旧 pid 文件（残留 -1 会让 isRunning 恒真）
+            try { pidFile.delete(); } catch (Exception ignored) {}
+            diag("[警告] 无法保存 PID（后续用端口探测兜底）: " + e);
         }
 
         File stdoutFile = new File(workDir, "dsh.stdout.log");
@@ -416,7 +422,10 @@ public class PiService extends Service {
             try (BufferedReader r = new BufferedReader(new FileReader(pidFile))) {
                 return Integer.parseInt(r.readLine());
             } catch (Exception ex) {
-                return -1;
+                // 拿不到真实 PID 时绝不能返回 -1：写进 pid 文件后，
+                // isRunning() 里的 `kill -0 -1` 对所有进程都返回成功，
+                // 会误判"服务已在运行"从而永远不再启动。改为抛异常，由调用方跳过写 pid。
+                throw new IllegalStateException("无法获取子进程 PID", ex);
             }
         }
     }
@@ -445,4 +454,14 @@ public class PiService extends Service {
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
+
+    /** 端口探测兜底：pid 不可靠时用它判断后端是否真的在监听 */
+    private static boolean isPortListening(int port) {
+        try (java.net.Socket sock = new java.net.Socket()) {
+            sock.connect(new java.net.InetSocketAddress("127.0.0.1", port), 800);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }
