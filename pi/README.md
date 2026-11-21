@@ -1,14 +1,24 @@
 # Pi — pi coding agent 的安卓发行
 
-在 Android 上运行 [pi coding agent](https://github.com/earendil-works/pi) `v0.18.0`，
-用社区成熟的 Web UI [pi-web](https://github.com/agegr/pi-web)。
+在 Android 上运行 [pi coding agent](https://github.com/earendil-works/pi) `v0.18.0`——统一 LLM API + agent 循环 + 文件/命令/编辑工具的 AI coding agent，配社区成熟的 Web UI [pi-web](https://github.com/agegr/pi-web)（8334⭐）。
 
 ## APK（推荐）
 
-- **打开直接进 WebView**：无配置页，点开即用（后台启动 pi 服务 + WebView 加载聊天界面）。
-- **固定签名**：`pi.keystore`，覆盖安装保留数据（已解压的 Node runtime 不重装）。
-- 包名 `com.example.pi`，默认端口 30141。
-- 内部打法：Java/WebView 壳 + 内嵌 Termux arm64 Node.js + pi 完整运行时（WebView ↔ bridge.js ↔ pi RPC）。
+**打开直接进 WebView**：无配置页，点开即用。MainActivity（18 行）直接启动后台服务 + 进 WebView。后台服务起 pi 服务监听 `127.0.0.1:30141`，WebView 加载聊天界面。
+
+**固定签名**：`pi.keystore`，覆盖安装保留数据。包名 `com.example.pi`，默认端口 30141。
+
+### 内部打法（内嵌 Node.js 运行时）
+
+pi 是 TypeScript/Node 栈，Android 上跑需要 Node.js。解法：
+
+1. **内嵌 Termux arm64 版 Node.js**（`libnode.so`，放 `jniLibs`，走 nativeLibraryDir 执行）。
+2. npm 装 pi + pi-web 完整运行时（`node_modules`），打包进 APK `assets/runtime.tar`。
+3. 首次启动：Service 从 assets 解压 runtime 到 `files/runtime/`（~971MB），写 `runtime.version` 标记版本。
+4. **覆盖安装保留**：若 `runtime.version` 未变，跳过重解压（保留已解压 runtime + 用户数据）。
+5. 启动 pi 服务（`node lib/cli.js` 或 pi-web），WebView ↔ `bridge.js` ↔ pi 的 RPC/HTTP 接口通信。
+
+WebView 加载 pi-web 前端（浏览器里聊天、跑 agent、配模型、浏览项目文件）。
 
 ### 下载 / 构建
 
@@ -17,9 +27,11 @@
   ```bash
   gh workflow run pi.yml -f version=v0.18.0
   ```
+- CI 缓存：npm 包（`setup-node cache: npm`，pi-web 依赖多）+ gradle。build-apk.sh 下载 Termux node + npm 装 pi + 打包 assets + gradle assembleRelease（固定 keystore 签名）。
 
 ## Termux 裸命令
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/chentianxiong123/AI-Everything-on-Android/master/pi/termux/install.sh | sh
 ```
+Termux 里直接 npm 装 pi + pi-web，命令行跑（Termux 是现成的 Node 环境）。
