@@ -15,7 +15,7 @@ public class WebViewActivity extends AppCompatActivity {
 
         String port = getIntent().getStringExtra("port");
         if (port == null) port = "3080";
-        final String portF = port;  // 匿名类 WebViewClient 访问需 final
+        final String portF = port;  // 匿名类 WebViewClient 和后续线程都要用
 
         WebView wv = findViewById(R.id.webview);
         WebSettings s = wv.getSettings();
@@ -47,7 +47,6 @@ public class WebViewActivity extends AppCompatActivity {
         wv.setWebChromeClient(new WebChromeClient());
         // dsh web 需要 token 认证：先等 PiService 从 stdout 提取到 token（dsh 启动后异步输出），
         // 再加载带 token 的 URL（WebView 会自动处理 cookie 和重定向）
-        final String portF = port;
         new Thread(() -> {
             // dsh web 启动时会输出多次 token（刷新），需等 token 稳定（连续 4 次 500ms 相同 ≈ 2s 不变）
             // 再加载，否则用第一个过期 token 会 401 白屏
