@@ -36,6 +36,20 @@ jobs:
           cp dsh/apk/app/build/outputs/apk/release/*.apk DSH-latest.apk 2>/dev/null || \
           cp dsh/dist/DSH-latest.apk DSH-latest.apk
 
+      # 构建完直接发布 Release（不绕 artifact 中转）
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="dsh-$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          gh release create "$TAG" DSH-latest.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "DSH Runner $TAG" \
+            --notes "DSH (DeepSeek Harness) 安卓壳。覆盖安装（adb install -r）保留已解压 runtime。" \
+            || gh release upload "$TAG" DSH-latest.apk --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+
       # --- Termux: 离线安装包（在 x86 上只能打包结构，无法跑 arm64 node）---
       - name: Package Termux runtime (node_modules only)
         working-directory: dsh
@@ -48,25 +62,3 @@ jobs:
           name: DSH
           path: |
             DSH-latest.apk
-
-  # 发布 Release：APK 作为 release asset（下载可靠、可经 github.com 加速），避免 artifact 下载 404/慢
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: DSH
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="dsh-$(date +%Y%m%d)-${GITHUB_SHA::7}"
-          gh release create "$TAG" DSH-latest.apk \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "DSH Runner $TAG" \
-            --notes "DSH (DeepSeek Harness) 安卓壳。下载 DSH-latest.apk 覆盖安装（保留已解压 runtime，不重解压）。" \
-            || gh release upload "$TAG" DSH-latest.apk --repo "$GITHUB_REPOSITORY" --clobber
-          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
