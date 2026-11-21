@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create 需要写权限（默认 token 只有 read）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
