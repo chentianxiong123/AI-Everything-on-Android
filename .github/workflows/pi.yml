@@ -51,7 +51,7 @@ jobs:
           TAG="pi-${VERSION}"
           gh release create "$TAG" "Pi-${VERSION}.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Pi Runner ${VERSION}" \
+            --title "Pi ${VERSION}" \
             --notes "Pi 安卓壳。上游 @agegr/pi-web ${VERSION}。" \
             || gh release upload "$TAG" "Pi-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

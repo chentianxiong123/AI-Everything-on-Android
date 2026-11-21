@@ -56,7 +56,7 @@ jobs:
           TAG="dsh-${VERSION}"
           gh release create "$TAG" "DSH-${VERSION}.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "DSH Runner ${VERSION}" \
+            --title "DSH ${VERSION}" \
             --notes "DSH (DeepSeek Harness) 安卓壳。覆盖安装（adb install -r）保留已解压 runtime。上游 @deepseek-ai/dsh ${VERSION}。" \
             || gh release upload "$TAG" "DSH-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

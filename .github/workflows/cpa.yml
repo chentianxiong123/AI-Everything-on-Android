@@ -59,7 +59,7 @@ jobs:
           TAG="cpa-${VERSION}"
           gh release create "$TAG" "CPA-${VERSION}.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "CPA Runner ${VERSION}" \
+            --title "CPA ${VERSION}" \
             --notes "CPA 安卓壳。上游 ${VERSION}。" \
             || gh release upload "$TAG" "CPA-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

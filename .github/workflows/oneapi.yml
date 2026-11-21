@@ -61,7 +61,7 @@ jobs:
           TAG="oneapi-${VERSION}"
           gh release create "$TAG" "OneAPI-${VERSION}.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "OneAPI Runner ${VERSION}" \
+            --title "OneAPI ${VERSION}" \
             --notes "OneAPI 安卓壳。上游 songquanpeng/one-api ${VERSION}。" \
             || gh release upload "$TAG" "OneAPI-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

@@ -52,7 +52,7 @@ jobs:
           TAG="newapi-${VERSION}"
           gh release create "$TAG" "NewAPI-${VERSION}.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "NewAPI Runner ${VERSION}" \
+            --title "NewAPI ${VERSION}" \
             --notes "NewAPI 安卓壳（static arm64）。上游 ${VERSION}。" \
             || gh release upload "$TAG" "NewAPI-${VERSION}.apk" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
